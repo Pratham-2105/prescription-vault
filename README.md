@@ -1,0 +1,3 @@
+# Prescription Vault
+
+Prescription Vault is a personal medical-record organizer designed to let users digitally store and manage their prescriptions and related medical documents instead of relying on physical copies. Users will be able to upload or capture prescription images, organize them by patient, doctor, clinic, and date, and later manage medications, dosage schedules, reminders, appointments, and other related information. The initial system is being built as a FastAPI backend with a future mobile and web client, with OCR and more advanced processing planned for later versions.
