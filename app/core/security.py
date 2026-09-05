@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -44,3 +46,17 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
     if payload.get("type") != "access":
         return None
     return payload
+
+
+def generate_refresh_token() -> str:
+    """A long random string. This is the value the client stores."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_refresh_token(token: str) -> str:
+    """Fingerprint the token for database storage. One-way."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def refresh_token_expiry() -> datetime:
+    return datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)

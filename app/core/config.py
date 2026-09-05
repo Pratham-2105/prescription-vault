@@ -14,7 +14,8 @@ class Settings(BaseSettings):
 
     JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     STORAGE_DIR: str = "./storage"
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024  # 10 MB

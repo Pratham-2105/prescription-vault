@@ -2,12 +2,14 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app.api.deps import get_storage
+from app.core.limiter import limiter
 from app.db.session import get_db
 from app.main import app
 from app.models import Base
@@ -106,3 +108,9 @@ async def prescription(
         headers=auth_headers,
     )
     return resp.json()
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter() -> None:
+    """Rate limit counters are process-global; clear them between tests."""
+    limiter.reset()

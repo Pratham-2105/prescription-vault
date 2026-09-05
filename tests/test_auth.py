@@ -69,3 +69,60 @@ async def test_me_returns_current_user(client: AsyncClient, auth_headers: dict[s
     resp = await client.get("/auth/me", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["email"] == "user_a@test.com"
+
+
+async def test_login_is_rate_limited(client: AsyncClient) -> None:
+    await client.post("/auth/register", json={"email": "rl@test.com", "password": "securepass123"})
+
+    statuses = []
+    for _ in range(8):
+        resp = await client.post(
+            "/auth/login", data={"username": "rl@test.com", "password": "wrongpass123"}
+        )
+        statuses.append(resp.status_code)
+
+    assert 429 in statuses, f"expected a 429 among {statuses}"
+
+
+async def test_login_returns_both_tokens(client: AsyncClient) -> None:
+    await client.post("/auth/register", json={"email": "rt@test.com", "password": "securepass123"})
+    resp = await client.post(
+        "/auth/login", data={"username": "rt@test.com", "password": "securepass123"}
+    )
+    body = resp.json()
+    assert body["access_token"]
+    assert body["refresh_token"]
+
+
+async def test_refresh_rotates_the_token(client: AsyncClient) -> None:
+    await client.post("/auth/register", json={"email": "rot@test.com", "password": "securepass123"})
+    login = await client.post(
+        "/auth/login", data={"username": "rot@test.com", "password": "securepass123"}
+    )
+    old = login.json()["refresh_token"]
+
+    first = await client.post("/auth/refresh", json={"refresh_token": old})
+    assert first.status_code == 200
+    assert first.json()["refresh_token"] != old
+
+    # The old one must now be dead.
+    replay = await client.post("/auth/refresh", json={"refresh_token": old})
+    assert replay.status_code == 401
+
+
+async def test_refresh_rejects_garbage(client: AsyncClient) -> None:
+    resp = await client.post("/auth/refresh", json={"refresh_token": "not-a-token"})
+    assert resp.status_code == 401
+
+
+async def test_logout_kills_the_refresh_token(client: AsyncClient) -> None:
+    await client.post("/auth/register", json={"email": "lo@test.com", "password": "securepass123"})
+    login = await client.post(
+        "/auth/login", data={"username": "lo@test.com", "password": "securepass123"}
+    )
+    token = login.json()["refresh_token"]
+
+    await client.post("/auth/logout", json={"refresh_token": token})
+
+    resp = await client.post("/auth/refresh", json={"refresh_token": token})
+    assert resp.status_code == 401
