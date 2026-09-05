@@ -46,7 +46,7 @@ async def get_current_user(
     try:
         user_id = uuid.UUID(str(payload.get("sub")))
     except (ValueError, TypeError):
-        raise credentials_error
+        raise credentials_error from None
 
     user = await db.get(User, user_id)
     if user is None or not user.is_active:

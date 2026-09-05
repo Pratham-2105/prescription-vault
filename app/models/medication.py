@@ -18,11 +18,11 @@ class Medication(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Uuid, ForeignKey("prescriptions.id", ondelete="CASCADE"), index=True, nullable=False
     )
 
-    name: Mapped[str] = mapped_column(String(160), nullable=False)        # "Azithral"
-    strength: Mapped[str | None] = mapped_column(String(60))              # "500 mg"
-    form: Mapped[str | None] = mapped_column(String(40))                  # tablet / syrup
-    frequency_code: Mapped[str | None] = mapped_column(String(20))        # "1-0-1"
-    food_relation: Mapped[str | None] = mapped_column(String(20))         # before/after/with
+    name: Mapped[str] = mapped_column(String(160), nullable=False)  # "Azithral"
+    strength: Mapped[str | None] = mapped_column(String(60))  # "500 mg"
+    form: Mapped[str | None] = mapped_column(String(40))  # tablet / syrup
+    frequency_code: Mapped[str | None] = mapped_column(String(20))  # "1-0-1"
+    food_relation: Mapped[str | None] = mapped_column(String(20))  # before/after/with
     duration_days: Mapped[int | None] = mapped_column(Integer)
     start_date: Mapped[date | None]
     instructions: Mapped[str | None] = mapped_column(Text)

@@ -16,9 +16,7 @@ class StorageBackend(ABC):
         """Filesystem path if the backend has one, else None."""
 
 
-def build_key(
-    *, user_id: uuid.UUID, prescription_id: uuid.UUID, filename: str | None
-) -> str:
+def build_key(*, user_id: uuid.UUID, prescription_id: uuid.UUID, filename: str | None) -> str:
     suffix = Path(filename or "").suffix.lower()[:10] or ".bin"
     today = date.today()
     return f"{user_id}/{today:%Y/%m}/{prescription_id}/{uuid.uuid4().hex}{suffix}"

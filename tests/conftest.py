@@ -2,7 +2,6 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -18,7 +17,7 @@ TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
 
 @pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
+async def db_session() -> AsyncGenerator[AsyncSession]:
     """A fresh, empty in-memory database for every single test."""
     engine = create_async_engine(
         TEST_DB_URL,
@@ -29,9 +28,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    session_factory = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
-    )
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
     async with session_factory() as session:
         yield session
@@ -40,12 +37,10 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture
-async def client(
-    db_session: AsyncSession, tmp_path: Path
-) -> AsyncGenerator[AsyncClient, None]:
+async def client(db_session: AsyncSession, tmp_path: Path) -> AsyncGenerator[AsyncClient]:
     """HTTP client wired to the test database and a temp storage directory."""
 
-    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+    async def override_get_db() -> AsyncGenerator[AsyncSession]:
         yield db_session
 
     def override_get_storage() -> LocalStorage:
@@ -69,9 +64,7 @@ async def register_and_login(
         "/auth/register",
         json={"email": email, "password": password, "full_name": "Test User"},
     )
-    resp = await client.post(
-        "/auth/login", data={"username": email, "password": password}
-    )
+    resp = await client.post("/auth/login", data={"username": email, "password": password})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 

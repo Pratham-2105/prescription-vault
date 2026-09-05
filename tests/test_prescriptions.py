@@ -70,9 +70,7 @@ async def test_date_range_filter(
     assert outside.json()["total"] == 0
 
 
-async def test_pagination_caps_limit(
-    client: AsyncClient, auth_headers: dict[str, str]
-) -> None:
+async def test_pagination_caps_limit(client: AsyncClient, auth_headers: dict[str, str]) -> None:
     resp = await client.get("/prescriptions?limit=5000", headers=auth_headers)
     assert resp.status_code == 422
 
@@ -155,9 +153,7 @@ async def test_deleting_prescription_cascades(
         await client.get(f"/prescriptions/{prescription['id']}", headers=auth_headers)
     ).status_code == 404
     assert (
-        await client.patch(
-            f"/medications/{med_id}", json={"name": "X"}, headers=auth_headers
-        )
+        await client.patch(f"/medications/{med_id}", json={"name": "X"}, headers=auth_headers)
     ).status_code == 404
 
 

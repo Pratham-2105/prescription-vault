@@ -29,9 +29,7 @@ async def get_patient(patient: OwnedPatient) -> Patient:
 
 
 @router.patch("/{patient_id}", response_model=PatientRead)
-async def update_patient(
-    payload: PatientUpdate, patient: OwnedPatient, db: DbSession
-) -> Patient:
+async def update_patient(payload: PatientUpdate, patient: OwnedPatient, db: DbSession) -> Patient:
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(patient, field, value)
     await db.commit()

@@ -21,9 +21,7 @@ async def test_register_rejects_duplicate_email(client: AsyncClient) -> None:
 
 
 async def test_register_rejects_short_password(client: AsyncClient) -> None:
-    resp = await client.post(
-        "/auth/register", json={"email": "x@test.com", "password": "short"}
-    )
+    resp = await client.post("/auth/register", json={"email": "x@test.com", "password": "short"})
     assert resp.status_code == 422
 
 
@@ -35,9 +33,7 @@ async def test_register_rejects_invalid_email(client: AsyncClient) -> None:
 
 
 async def test_login_with_wrong_password_fails(client: AsyncClient) -> None:
-    await client.post(
-        "/auth/register", json={"email": "a@test.com", "password": "securepass123"}
-    )
+    await client.post("/auth/register", json={"email": "a@test.com", "password": "securepass123"})
     resp = await client.post(
         "/auth/login", data={"username": "a@test.com", "password": "wrongpass123"}
     )
@@ -65,15 +61,11 @@ async def test_me_requires_authentication(client: AsyncClient) -> None:
 
 
 async def test_me_rejects_garbage_token(client: AsyncClient) -> None:
-    resp = await client.get(
-        "/auth/me", headers={"Authorization": "Bearer not.a.real.token"}
-    )
+    resp = await client.get("/auth/me", headers={"Authorization": "Bearer not.a.real.token"})
     assert resp.status_code == 401
 
 
-async def test_me_returns_current_user(
-    client: AsyncClient, auth_headers: dict[str, str]
-) -> None:
+async def test_me_returns_current_user(client: AsyncClient, auth_headers: dict[str, str]) -> None:
     resp = await client.get("/auth/me", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["email"] == "user_a@test.com"

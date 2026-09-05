@@ -100,9 +100,7 @@ async def list_prescriptions(
             )
         )
 
-    total = await db.scalar(
-        select(func.count()).select_from(base.subquery())
-    ) or 0
+    total = await db.scalar(select(func.count()).select_from(base.subquery())) or 0
 
     rows_stmt = (
         base.add_columns(
@@ -147,9 +145,7 @@ async def update_prescription(
     return prescription
 
 
-@router.delete(
-    "/prescriptions/{prescription_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/prescriptions/{prescription_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_prescription(
     prescription: OwnedPrescription, db: DbSession, storage: Storage
 ) -> None:
@@ -195,9 +191,7 @@ async def upload_attachment(
         )
     ) or 0
 
-    key = build_key(
-        user_id=user.id, prescription_id=prescription.id, filename=file.filename
-    )
+    key = build_key(user_id=user.id, prescription_id=prescription.id, filename=file.filename)
     await storage.save(data, key=key)
 
     attachment = Attachment(
@@ -213,16 +207,14 @@ async def upload_attachment(
         await db.commit()
     except Exception:
         await db.rollback()
-        await storage.delete(key)   # don't leave an orphaned file on disk
+        await storage.delete(key)  # don't leave an orphaned file on disk
         raise
     await db.refresh(attachment)
     return attachment
 
 
 @router.get("/attachments/{attachment_id}/file")
-async def download_attachment(
-    attachment: OwnedAttachment, storage: Storage
-) -> FileResponse:
+async def download_attachment(attachment: OwnedAttachment, storage: Storage) -> FileResponse:
     path = storage.local_path(attachment.storage_key)
     if path is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File missing from storage")
@@ -233,12 +225,8 @@ async def download_attachment(
     )
 
 
-@router.delete(
-    "/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT
-)
-async def delete_attachment(
-    attachment: OwnedAttachment, db: DbSession, storage: Storage
-) -> None:
+@router.delete("/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_attachment(attachment: OwnedAttachment, db: DbSession, storage: Storage) -> None:
     key = attachment.storage_key
     await db.delete(attachment)
     await db.commit()

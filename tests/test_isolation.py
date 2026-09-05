@@ -15,9 +15,7 @@ async def test_cannot_read_another_users_prescription(
     prescription: dict[str, Any],
     other_auth_headers: dict[str, str],
 ) -> None:
-    resp = await client.get(
-        f"/prescriptions/{prescription['id']}", headers=other_auth_headers
-    )
+    resp = await client.get(f"/prescriptions/{prescription['id']}", headers=other_auth_headers)
     assert resp.status_code == 404
 
 
@@ -39,9 +37,7 @@ async def test_cannot_delete_another_users_prescription(
     prescription: dict[str, Any],
     other_auth_headers: dict[str, str],
 ) -> None:
-    resp = await client.delete(
-        f"/prescriptions/{prescription['id']}", headers=other_auth_headers
-    )
+    resp = await client.delete(f"/prescriptions/{prescription['id']}", headers=other_auth_headers)
     assert resp.status_code == 404
 
 

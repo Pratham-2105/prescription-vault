@@ -22,7 +22,7 @@ class Patient(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
 
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
-    relation: Mapped[str | None] = mapped_column(String(40))   # self / mother / son ...
+    relation: Mapped[str | None] = mapped_column(String(40))  # self / mother / son ...
     date_of_birth: Mapped[date | None] = mapped_column(Date)
     blood_group: Mapped[str | None] = mapped_column(String(8))
     allergies: Mapped[str | None] = mapped_column(Text)

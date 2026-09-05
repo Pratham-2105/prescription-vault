@@ -28,7 +28,7 @@ class Prescription(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     doctor_name: Mapped[str | None] = mapped_column(String(160), index=True)
     clinic_name: Mapped[str | None] = mapped_column(String(200), index=True)
     specialty: Mapped[str | None] = mapped_column(String(80))
-    reason: Mapped[str | None] = mapped_column(String(300))   # "fever, 4 days"
+    reason: Mapped[str | None] = mapped_column(String(300))  # "fever, 4 days"
     notes: Mapped[str | None] = mapped_column(Text)
 
     # Populated later by the OCR pipeline.

@@ -11,7 +11,7 @@ engine = create_async_engine(
     echo=settings.ENVIRONMENT == "development",
     future=True,
     connect_args=connect_args,
-    pool_pre_ping=True
+    pool_pre_ping=True,
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -21,7 +21,8 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+
+async def get_db() -> AsyncGenerator[AsyncSession]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
