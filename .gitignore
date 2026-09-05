@@ -1,8 +1,40 @@
-.venv/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+.venvdir/
+
+# Secrets — NEVER commit
 .env
+.env.local
+*.pem
+*.key
+
+# Databases
+*.db
+*.sqlite3
 dev.db
+
+# User uploads
 storage/
+
+# Test & type-check artifacts
+.coverage
+coverage.xml
+htmlcov/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
