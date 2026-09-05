@@ -1,3 +1,4 @@
+[![CI](https://github.com/Pratham-2105/prescription-vault/actions/workflows/ci.yml/badge.svg)](https://github.com/Pratham-2105/prescription-vault/actions/workflows/ci.yml)
 # Prescription Vault
 
 A backend for storing and organising medical prescriptions. Users photograph
