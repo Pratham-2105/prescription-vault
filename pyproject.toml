@@ -28,6 +28,7 @@ ignore = ["B008", "S101"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106", "S107", "ARG001"]
 "alembic/*" = ["E501", "F401"]
+"app/api/v1/auth.py" = ["ARG001"]  
 
 [tool.mypy]
 python_version = "3.13"
