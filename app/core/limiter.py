@@ -37,4 +37,5 @@ async def rate_limit_handler(_request: Request, exc: Exception) -> JSONResponse:
         headers={"Retry-After": str(retry_after)},
     )
 
+
 __all__ = ["RateLimitExceeded", "limiter", "rate_limit_handler"]
