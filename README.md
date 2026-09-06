@@ -15,7 +15,8 @@ Built to solve a specific problem: paper prescriptions get lost, and the "what w
 * **PostgreSQL** in production, SQLite for local development
 * **JWT** access tokens with rotating refresh tokens, bcrypt password hashing
 * **slowapi** — rate limiting on all authentication endpoints
-* **pytest** — 45 tests, 83% coverage
+* **Pillow** — upload sanitisation and thumbnail generation
+* **pytest** — 61 tests, 83% coverage
 
 ### Client
 
@@ -44,9 +45,21 @@ Endpoints cannot forget the ownership check because it runs before the handler d
 
 Protected screens live under a route group whose layout redirects unauthenticated visitors. A new screen is protected by virtue of where the file sits, rather than by remembering to add an individual check.
 
+### Uploads are sanitised, never trusted
+
+The client-declared `content_type` is ignored entirely — it is an attacker-controlled string. File type is determined from magic bytes, and a payload declaring itself a JPEG is rejected if its contents say otherwise.
+
+Images are then re-encoded through Pillow, which is what strips the metadata: decode to pixels, write a fresh file, and everything else is gone. EXIF orientation is applied to the pixels first, or every portrait photo would end up sideways.
+
+This matters because a prescription photo carries the coordinates of the clinic where it was taken. That is health data leaking through a field nobody looks at. There is a test that plants real coordinates and asserts they are absent afterwards.
+
+Uploads are also capped at 2400px with a 400px thumbnail generated, and dimensions are checked from the header before any pixels are decoded — a small file can declare a hundred megapixels, and the request size limit says nothing about decompressed size.
+
 ### Storage is behind an interface
 
 `StorageBackend` is abstract; local disk is used today, with S3-compatible object storage planned for production. No changes outside the service layer are required when switching backends.
+
+Storage keys are opaque and never leave the server. Clients receive a `has_thumbnail` boolean rather than a key.
 
 ### Client types are generated, not written
 
@@ -156,15 +169,22 @@ npm run typecheck
 | `POST` | `/api/v1/prescriptions`                  | Record a visit                   |
 | `GET`  | `/api/v1/prescriptions`                  | Timeline, filtered and paginated |
 | `POST` | `/api/v1/prescriptions/{id}/attachments` | Upload a scan                    |
+| `GET`  | `/api/v1/attachments/{id}/file`          | Download the stored image        |
+| `GET`  | `/api/v1/attachments/{id}/thumbnail`     | Small preview for the timeline   |
 | `POST` | `/api/v1/prescriptions/{id}/medications` | Add prescribed medication        |
 
 Authentication endpoints are rate limited per IP. Limits are configurable through `LOGIN_RATE_LIMIT` and related settings in `.env`.
+
+Accepted uploads: JPEG, PNG, WebP, HEIC, and PDF. Images are re-encoded to JPEG; PDFs pass through unchanged.
 
 ## Project Layout
 
 ```text
 prescription-vault/
 ├── app/                    # FastAPI backend
+│   ├── core/               # Config, security, logging, middleware, limiter
+│   ├── services/           # Storage backends, image pipeline
+│   └── api/                # Dependencies and versioned routers
 ├── alembic/                # Database migrations
 ├── tests/                  # Backend test suite
 └── client/                 # Expo app (iOS, Android, web)
