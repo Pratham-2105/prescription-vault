@@ -21,7 +21,14 @@ export default function AppLayout() {
         headerStyle: { backgroundColor: colors.bg },
         headerShadowVisible: false,
         headerTintColor: colors.text,
+        headerBackTitle: 'Back',
       }}
-    />
+    >
+      <Stack.Screen
+        name="index"
+        options={{ title: 'Prescriptions', headerLargeTitle: true }}
+      />
+      <Stack.Screen name="prescription/[id]" options={{ title: 'Visit' }} />
+    </Stack>
   );
 }

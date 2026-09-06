@@ -1,7 +1,5 @@
 import { Platform } from "react-native";
 
-const LAN_IP = '172.29.112.1';
-
 function resolveBaseUrl(): string {
     const fromEnv = process.env.EXPO_PUBLIC_API_URL;
     if (fromEnv) return fromEnv.replace(/\/+$/, '');

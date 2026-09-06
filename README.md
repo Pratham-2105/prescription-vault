@@ -22,8 +22,9 @@ Built to solve a specific problem: paper prescriptions get lost, and the "what w
 
 * **Expo** + **React Native Web** — one codebase for iOS, Android, and web
 * **Expo Router** — file-based routing with generated route types
+* **TanStack Query** — server-state cache, deduplication, and pagination
 * **TypeScript** in strict mode, with API types generated from the OpenAPI schema
-* **Vitest** — data-layer tests that run in plain Node, no simulator
+* **Vitest** — 9 data-layer tests that run in plain Node, no simulator
 
 ## Design Decisions
 
@@ -45,6 +46,18 @@ Endpoints cannot forget the ownership check because it runs before the handler d
 
 Protected screens live under a route group whose layout redirects unauthenticated visitors. A new screen is protected by virtue of where the file sits, rather than by remembering to add an individual check.
 
+### Screens talk to a repository, never to HTTP
+
+Every screen reads through a `PrescriptionRepository` interface. The HTTP implementation is the only code that knows a URL or a snake_case field name, and it maps wire objects into domain types before anything else sees them.
+
+Offline support means adding a SQLite implementation and changing one line of wiring. Screens that called `fetch` directly would need rewriting instead of swapping.
+
+### Server state is cached, not stored in components
+
+TanStack Query owns loading and error state, deduplicates concurrent requests for the same data, and merges paginated results. The timeline uses cursor-free `limit`/`offset` paging against the list endpoint's `total`.
+
+Image bytes are cached indefinitely: an attachment ID's contents never change, so a re-render or a return visit costs nothing.
+
 ### Uploads are sanitised, never trusted
 
 The client-declared `content_type` is ignored entirely — it is an attacker-controlled string. File type is determined from magic bytes, and a payload declaring itself a JPEG is rejected if its contents say otherwise.
@@ -54,6 +67,12 @@ Images are then re-encoded through Pillow, which is what strips the metadata: de
 This matters because a prescription photo carries the coordinates of the clinic where it was taken. That is health data leaking through a field nobody looks at. There is a test that plants real coordinates and asserts they are absent afterwards.
 
 Uploads are also capped at 2400px with a 400px thumbnail generated, and dimensions are checked from the header before any pixels are decoded — a small file can declare a hundred megapixels, and the request size limit says nothing about decompressed size.
+
+### Images are fetched, not linked
+
+An `<Image>` source cannot carry an `Authorization` header — the platform image loader issues its own request. Attachment bytes are fetched through the API client and handed to the view as data.
+
+The alternative, a token in the URL query string, would put a bearer credential into server logs, proxy logs, and browser history. Signed short-lived URLs are the production answer and arrive with object storage.
 
 ### Storage is behind an interface
 
@@ -113,6 +132,16 @@ Interactive API documentation:
 
 http://localhost:8000/docs
 
+On Windows, if activation appears to succeed but commands are not found, call the
+virtualenv's executables directly:
+````
+
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+
+.venv\Scripts\alembic.exe upgrade head
+
+````
+
 ### Client
 
 ```bash
@@ -131,6 +160,8 @@ npm run web
 npm run android
 npm run ios
 ```
+
+The web client runs on port 8081 and expects the API on port 8000.
 
 To run the client on a physical device, start the backend with:
 
@@ -168,10 +199,12 @@ npm run typecheck
 | `GET`  | `/api/v1/patients`                       | List family profiles             |
 | `POST` | `/api/v1/prescriptions`                  | Record a visit                   |
 | `GET`  | `/api/v1/prescriptions`                  | Timeline, filtered and paginated |
+| `GET`  | `/api/v1/prescriptions/{id}`             | One visit with its attachments   |
 | `POST` | `/api/v1/prescriptions/{id}/attachments` | Upload a scan                    |
 | `GET`  | `/api/v1/attachments/{id}/file`          | Download the stored image        |
 | `GET`  | `/api/v1/attachments/{id}/thumbnail`     | Small preview for the timeline   |
 | `POST` | `/api/v1/prescriptions/{id}/medications` | Add prescribed medication        |
+| `GET`  | `/api/v1/prescriptions/{id}/medications` | Medications from one visit       |
 
 Authentication endpoints are rate limited per IP. Limits are configurable through `LOGIN_RATE_LIMIT` and related settings in `.env`.
 
@@ -191,10 +224,17 @@ prescription-vault/
     ├── src/
     │   ├── api/            # HTTP client, token storage, auth
     │   ├── app/            # Expo Router screens
+    │   ├── data/           # Repository interface, implementations, hooks
+    │   ├── domain/         # Types the app speaks, independent of transport
+    │   ├── features/       # Feature components and pure helpers
     │   ├── state/          # Session context
     │   └── ui/             # Shared components
     └── ...
 ```
+
+## Status
+
+Backend and authentication are complete. The client has sign-in, a prescription timeline grouped by visit date, and a detail view with page swiper and medication list. Capture, search, and offline sync are in progress.
 
 ## Disclaimer
 
