@@ -44,12 +44,14 @@ export function createAuthApi(api: ApiClient, tokens: TokenStore) {
             const stored = await tokens.load();
             try {
                 if (stored?.refreshToken) {
-                    await api.post('/api/v1/auth/logout',{
+                    // auth: false — an auth'd call could 401, trigger a refresh, and rotate
+                    // the token away, leaving the retry revoking a token that no longer exists.
+                    await api.post('/api/v1/auth/logout', {
                         body: { refresh_token: stored.refreshToken },
+                        auth: false,
                     });
                 }
             } finally {
-                // Local session is cleared even if the server call fails.
                 await tokens.clear();
             }
         },

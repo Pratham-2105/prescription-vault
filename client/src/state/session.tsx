@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { authApi, onSessionExpired, tokenStore, type User } from '@/api';
+import { ApiError, authApi, onSessionExpired, tokenStore, type User } from '@/api';
 
 type SessionState = {
   user: User | null;
@@ -34,9 +34,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (!stored) return;
         const me = await authApi.me();
         if (!cancelled) setUser(me);
-      } catch {
-        // Expired or unreachable — fall through to the login screen.
-        await tokenStore.clear();
+      } catch (err) {
+        // Only a rejected token means the session is dead. A network failure is
+        // transient — keep the refresh token so reconnecting restores the session.
+        if (err instanceof ApiError && err.status === 401) {
+          await tokenStore.clear();
+        }
       } finally {
         if (!cancelled) setIsRestoring(false);
       }
@@ -63,8 +66,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await authApi.logout();
-    setUser(null);
+    try {
+      await authApi.logout();
+    } finally {
+      // Tokens are already gone; the UI must follow even if the server call failed.
+      setUser(null);
+    }
   }, []);
 
   const value = useMemo(
