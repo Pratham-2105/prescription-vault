@@ -16,10 +16,15 @@ from dataclasses import dataclass
 from typing import Final
 
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pillow_heif import register_heif_opener
+
+# iPhones shoot HEIC by default. Pillow has no built-in decoder; this
+# registers one so HEIC follows the same path as JPEG and PNG.
+register_heif_opener()
 
 # A 100MP "image" that decompresses to gigabytes of RAM is a cheap DoS.
 # Pillow warns above this by default; we make it an error instead.
-Image.MAX_IMAGE_PIXELS = 50_000_000
+MAX_IMAGE_PIXELS: Final = 50_000_000
 
 MAX_DIMENSION: Final = 2400
 THUMBNAIL_DIMENSION: Final = 400
@@ -98,13 +103,17 @@ def process_upload(raw: bytes) -> ProcessedUpload:
 
     try:
         with Image.open(io.BytesIO(raw)) as source:
-            # Rotate the pixels to match the EXIF orientation tag BEFORE the
-            # metadata is dropped, or every portrait photo ends up sideways.
-            image = ImageOps.exif_transpose(source)
+            # Image.open only reads the header, so this is cheap. Checking
+            # here matters because the 10 MB request cap says nothing about
+            # decompressed size — a few hundred KB can declare 100 megapixels.
+            width, height = source.size
+            if width * height > MAX_IMAGE_PIXELS:
+                raise UnsupportedFileError("Image dimensions are implausibly large")
 
+            image = ImageOps.exif_transpose(source)
             # If exif_transpose returns None, use the original source image
             if image is None:
-               image = source
+                image = source
 
             # Flatten transparency and drop palettes: JPEG has neither.
             if image.mode in ("RGBA", "LA", "P"):

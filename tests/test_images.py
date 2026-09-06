@@ -1,6 +1,7 @@
 """The upload pipeline strips metadata and rejects hostile input."""
 
 import io
+import warnings
 
 import piexif
 import pytest
@@ -138,3 +139,30 @@ def test_truncated_jpeg_is_rejected() -> None:
     full = _photo_with_gps()
     with pytest.raises(CorruptImageError):
         process_upload(full[: len(full) // 3])
+
+
+def test_heic_is_decoded() -> None:
+    """iPhones shoot HEIC; it must survive the pipeline like any other image."""
+    buffer = io.BytesIO()
+    Image.new("RGB", (800, 600), (100, 120, 140)).save(buffer, format="HEIF")
+
+    result = process_upload(buffer.getvalue())
+
+    assert result.content_type == JPEG
+    assert result.width == 800
+
+
+def test_oversized_dimensions_are_rejected_before_decoding() -> None:
+    """
+    A small file can declare enormous dimensions. The 10 MB request cap does
+    not protect against this; the pixel count check does.
+    """
+    image = Image.new("RGB", (9000, 9000), (0, 0, 0))
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=1)
+
+    # Pillow warns on open, before our check runs. Expected here.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", Image.DecompressionBombWarning)
+        with pytest.raises(UnsupportedFileError):
+            process_upload(buffer.getvalue())
