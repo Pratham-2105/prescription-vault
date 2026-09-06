@@ -70,3 +70,18 @@ async def test_rate_limit_response_does_not_leak_account_existence(
     assert blocked.status_code == 429
     assert "ghost@test.com" not in blocked.text
     assert "not found" not in blocked.text.lower()
+
+
+async def test_retry_after_reflects_the_actual_window(client: AsyncClient) -> None:
+    """
+    Register is limited per hour, so the hint must be far larger than the
+    per-minute login window. A hardcoded fallback would fail this.
+    """
+    payload = {"email": "spam@test.com", "password": PASSWORD, "full_name": "Spam"}
+
+    for _ in range(10):
+        await client.post("/auth/register", json=payload)
+
+    blocked = await client.post("/auth/register", json=payload)
+    assert blocked.status_code == 429
+    assert int(blocked.headers["retry-after"]) > 300

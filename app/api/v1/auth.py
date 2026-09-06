@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import delete, select
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.security import (
     create_access_token,
@@ -44,7 +45,7 @@ async def _issue_token_pair(db: DbSession, user: User, user_agent: str | None) -
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/hour")
+@limiter.limit(settings.REGISTER_RATE_LIMIT)
 async def register(
     request: Request,
     response: Response,
@@ -67,7 +68,7 @@ async def register(
 
 
 @router.post("/login", response_model=Token)
-@limiter.limit("5/minute")
+@limiter.limit(settings.LOGIN_RATE_LIMIT)
 async def login(
     request: Request,
     response: Response,
@@ -88,7 +89,7 @@ async def login(
 
 
 @router.post("/refresh", response_model=Token)
-@limiter.limit("20/minute")
+@limiter.limit(settings.REFRESH_RATE_LIMIT)
 async def refresh(
     request: Request,
     response: Response,
@@ -132,7 +133,13 @@ async def refresh(
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(payload: RefreshRequest, db: DbSession) -> None:
+@limiter.limit(settings.LOGOUT_RATE_LIMIT)
+async def logout(
+    request: Request,
+    response: Response,
+    payload: RefreshRequest,
+    db: DbSession,
+) -> None:
     await db.execute(
         delete(RefreshToken).where(
             RefreshToken.token_hash == hash_refresh_token(payload.refresh_token)
