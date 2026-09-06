@@ -13,7 +13,7 @@ function resolveBaseUrl(): string {
     if (Platform.OS === 'android') return 'http://10.0.2.2:8000';
 
     // iOS simulator can use localhost; a physical decied needs the LAN IP.
-    return 'http://${LAN_IP}:8000';
+    return `http://${LAN_IP}:8000`;
 }
 
 export const API_BASE_URL = resolveBaseUrl();
