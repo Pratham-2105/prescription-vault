@@ -25,7 +25,12 @@ from app.schemas.prescription import (
     PrescriptionRead,
     PrescriptionUpdate,
 )
-from app.services.storage import build_key
+from app.services.images import (
+    CorruptImageError,
+    UnsupportedFileError,
+    process_upload,
+)
+from app.services.storage import build_key, thumbnail_key_for
 
 router = APIRouter(tags=["prescriptions"])
 
@@ -149,13 +154,20 @@ async def update_prescription(
 async def delete_prescription(
     prescription: OwnedPrescription, db: DbSession, storage: Storage
 ) -> None:
-    keys = [a.storage_key for a in prescription.attachments]
+    keys = [
+        key for a in prescription.attachments for key in (a.storage_key, a.thumbnail_key) if key
+    ]
     await db.delete(prescription)
     await db.commit()
     for key in keys:
         await storage.delete(key)
 
 
+@router.post(
+    "/prescriptions/{prescription_id}/attachments",
+    response_model=AttachmentRead,
+    status_code=status.HTTP_201_CREATED,
+)
 @router.post(
     "/prescriptions/{prescription_id}/attachments",
     response_model=AttachmentRead,
@@ -168,20 +180,22 @@ async def upload_attachment(
     storage: Storage,
     file: Annotated[UploadFile, File()],
 ) -> Attachment:
-    if file.content_type not in settings.ALLOWED_UPLOAD_TYPES:
-        raise HTTPException(
-            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            f"Unsupported file type: {file.content_type}",
-        )
-
     data = await file.read()
-    if len(data) == 0:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
     if len(data) > settings.MAX_UPLOAD_BYTES:
         raise HTTPException(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             f"File exceeds {settings.MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
         )
+
+    # The declared content_type is ignored entirely: it is a client-supplied
+    # string. process_upload decides the type from the bytes, then re-encodes
+    # images, which is what strips EXIF GPS.
+    try:
+        processed = process_upload(data)
+    except UnsupportedFileError as exc:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from exc
+    except CorruptImageError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
     next_page = (
         await db.scalar(
@@ -191,15 +205,24 @@ async def upload_attachment(
         )
     ) or 0
 
-    key = build_key(user_id=user.id, prescription_id=prescription.id, filename=file.filename)
-    await storage.save(data, key=key)
+    key = build_key(
+        user_id=user.id,
+        prescription_id=prescription.id,
+        content_type=processed.content_type,
+    )
+    thumb_key = thumbnail_key_for(key) if processed.thumbnail else None
+
+    await storage.save(processed.data, key=key)
+    if thumb_key and processed.thumbnail:
+        await storage.save(processed.thumbnail, key=thumb_key)
 
     attachment = Attachment(
         prescription_id=prescription.id,
         storage_key=key,
+        thumbnail_key=thumb_key,
         original_filename=file.filename,
-        content_type=file.content_type or "application/octet-stream",
-        size_bytes=len(data),
+        content_type=processed.content_type,
+        size_bytes=len(processed.data),
         page_number=next_page + 1,
     )
     db.add(attachment)
@@ -207,10 +230,24 @@ async def upload_attachment(
         await db.commit()
     except Exception:
         await db.rollback()
-        await storage.delete(key)  # don't leave an orphaned file on disk
+        # Storage and the DB are not transactional together; clean up both.
+        await storage.delete(key)
+        if thumb_key:
+            await storage.delete(thumb_key)
         raise
     await db.refresh(attachment)
     return attachment
+
+
+@router.get("/attachments/{attachment_id}/thumbnail")
+async def download_thumbnail(attachment: OwnedAttachment, storage: Storage) -> FileResponse:
+    """Small preview for the timeline. PDFs have none."""
+    if attachment.thumbnail_key is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No thumbnail for this file")
+    path = storage.local_path(attachment.thumbnail_key)
+    if path is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Thumbnail missing from storage")
+    return FileResponse(path, media_type="image/jpeg")
 
 
 @router.get("/attachments/{attachment_id}/file")
@@ -227,7 +264,9 @@ async def download_attachment(attachment: OwnedAttachment, storage: Storage) -> 
 
 @router.delete("/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_attachment(attachment: OwnedAttachment, db: DbSession, storage: Storage) -> None:
-    key = attachment.storage_key
+    keys = [attachment.storage_key, attachment.thumbnail_key]
     await db.delete(attachment)
     await db.commit()
-    await storage.delete(key)
+    for key in keys:
+        if key:
+            await storage.delete(key)

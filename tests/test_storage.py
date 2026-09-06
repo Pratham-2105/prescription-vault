@@ -1,3 +1,4 @@
+import uuid
 from pathlib import Path
 
 import pytest
@@ -24,8 +25,13 @@ async def test_delete_is_idempotent(tmp_path: Path) -> None:
     await storage.delete("does/not/exist.jpg")  # must not raise
 
 
-def test_keys_are_unique_per_upload() -> None:
-    import uuid
+async def test_keys_are_unique_per_upload() -> None:
+    """Two uploads never collide, even for the same prescription."""
+    user_id = uuid.uuid4()
+    prescription_id = uuid.uuid4()
 
-    args = {"user_id": uuid.uuid4(), "prescription_id": uuid.uuid4(), "filename": "x.jpg"}
-    assert build_key(**args) != build_key(**args)
+    first = build_key(user_id=user_id, prescription_id=prescription_id, content_type="image/jpeg")
+    second = build_key(user_id=user_id, prescription_id=prescription_id, content_type="image/jpeg")
+
+    assert first != second
+    assert first.endswith(".jpg")

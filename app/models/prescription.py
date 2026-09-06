@@ -63,4 +63,14 @@ class Attachment(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     page_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
+    thumbnail_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
     prescription: Mapped["Prescription"] = relationship(back_populates="attachments")
+
+    @property
+    def has_thumbnail(self) -> bool:
+        """
+        Whether GET /attachments/{id}/thumbnail will return anything.
+        Exposed to clients instead of thumbnail_key, which stays internal (§4.8).
+        """
+        return self.thumbnail_key is not None
