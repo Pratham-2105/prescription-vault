@@ -13,11 +13,11 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMedications, usePrescription } from '@/data/usePrescriptionDetail';
-import { AuthenticatedImage } from '@/features/prescriptions/AuthenticatedImage';
 import { formatFrequency } from '@/features/prescriptions/formatFrequency';
 import { formatVisitDate } from '@/features/prescriptions/groupByVisitDate';
 import type { Medication } from '@/domain/prescription';
 import { Button, ErrorBanner, colors } from '@/ui';
+import { AttachmentPage } from '@/features/prescriptions/AttachmentPage';
 
 export default function PrescriptionDetailScreen() {
   // ---- all hooks, above every conditional return ----
@@ -85,7 +85,7 @@ export default function PrescriptionDetailScreen() {
       {p.attachments.length === 0 ? (
         <Text style={styles.empty}>No pages attached to this visit.</Text>
       ) : (
-        <>
+        <View style={[styles.pager, { width: pageWidth }]}>
           <FlatList
             data={p.attachments}
             keyExtractor={(a) => a.id}
@@ -95,14 +95,14 @@ export default function PrescriptionDetailScreen() {
             onMomentumScrollEnd={handleScrollEnd}
             renderItem={({ item }) => (
               <View style={[styles.page, { width: pageWidth }]}>
-                <AuthenticatedImage attachmentId={item.id} variant="full" />
+                <AttachmentPage attachment={item} />
               </View>
             )}
           />
           <Text style={styles.pageCount}>
             Page {page + 1} of {p.attachments.length}
           </Text>
-        </>
+        </View>
       )}
 
       <Text style={styles.sectionTitle}>Medicines</Text>
@@ -157,6 +157,7 @@ function LabelledText({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  pager: { alignSelf: 'center' },
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 48, gap: 8 },
   centered: {
