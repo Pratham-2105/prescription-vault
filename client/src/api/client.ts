@@ -64,7 +64,11 @@ export class ApiClient {
     return this.request<T>(path, { ...opts, method: 'DELETE' });
   }
 
-  async request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  /**
+   * Auth + one-shot refresh + error mapping, body untouched.
+   * Use for binary responses. request<T>() layers JSON parsing on top.
+   */
+  async raw(path: string, opts: RequestOptions = {}): Promise<Response> {
     const needsAuth = opts.auth !== false;
 
     let { response, sentWith } = await this.send(path, opts, needsAuth);
@@ -79,7 +83,42 @@ export class ApiClient {
       ({ response } = await this.send(path, opts, needsAuth));
     }
 
-    return this.parse<T>(response);
+    if (!response.ok) await this.fail(response);
+
+    return response;
+  }
+
+  async request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+    const response = await this.raw(path, opts);
+    return this.parseOk<T>(response);
+  }
+
+  /** Non-2xx: read the error body and throw. Always throws. */
+  private async fail(response: Response): Promise<never> {
+    const text = await response.text();
+    let body: unknown = null;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text;
+      }
+    }
+    throw new ApiError(response.status, extractDetail(body, response.status), body);
+  }
+
+  /** 2xx JSON body. raw() has already thrown for errors. */
+  private async parseOk<T>(response: Response): Promise<T> {
+    if (response.status === 204) return undefined as T;
+
+    const text = await response.text();
+    if (!text) return undefined as T;
+
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return text as T;
+    }
   }
 
   // ---------------------------------------------------------------- internals
