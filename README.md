@@ -134,3 +134,110 @@ http://localhost:8000/docs
 
 On Windows, if activation appears to succeed but commands are not found, call the
 virtualenv's executables directly:
+````
+
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+
+.venv\Scripts\alembic.exe upgrade head
+
+````
+
+### Client
+
+```bash
+cd client
+
+npm install
+
+# Regenerate API types
+# Backend must be running
+npm run types:api
+
+# Start the web client
+npm run web
+
+# Or start a native client
+npm run android
+npm run ios
+```
+
+The web client runs on port 8081 and expects the API on port 8000.
+
+To run the client on a physical device, start the backend with:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --reload
+```
+
+Then set `EXPO_PUBLIC_API_URL` to your machine's LAN address.
+
+## Tests
+
+### Backend
+
+```bash
+pytest --cov=app
+```
+
+### Client
+
+```bash
+cd client
+
+npm test
+npm run typecheck
+```
+
+## API
+
+| Method | Path                                     | Purpose                          |
+| ------ | ---------------------------------------- | -------------------------------- |
+| `POST` | `/api/v1/auth/register`                  | Create account                   |
+| `POST` | `/api/v1/auth/login`                     | Obtain token pair                |
+| `POST` | `/api/v1/auth/refresh`                   | Rotate refresh token             |
+| `POST` | `/api/v1/auth/logout`                    | Revoke one refresh token         |
+| `GET`  | `/api/v1/patients`                       | List family profiles             |
+| `POST` | `/api/v1/prescriptions`                  | Record a visit                   |
+| `GET`  | `/api/v1/prescriptions`                  | Timeline, filtered and paginated |
+| `GET`  | `/api/v1/prescriptions/{id}`             | One visit with its attachments   |
+| `POST` | `/api/v1/prescriptions/{id}/attachments` | Upload a scan                    |
+| `GET`  | `/api/v1/attachments/{id}/file`          | Download the stored image        |
+| `GET`  | `/api/v1/attachments/{id}/thumbnail`     | Small preview for the timeline   |
+| `POST` | `/api/v1/prescriptions/{id}/medications` | Add prescribed medication        |
+| `GET`  | `/api/v1/prescriptions/{id}/medications` | Medications from one visit       |
+
+Authentication endpoints are rate limited per IP. Limits are configurable through `LOGIN_RATE_LIMIT` and related settings in `.env`.
+
+Accepted uploads: JPEG, PNG, WebP, HEIC, and PDF. Images are re-encoded to JPEG; PDFs pass through unchanged.
+
+## Project Layout
+
+```text
+prescription-vault/
+├── app/                    # FastAPI backend
+│   ├── core/               # Config, security, logging, middleware, limiter
+│   ├── services/           # Storage backends, image pipeline
+│   └── api/                # Dependencies and versioned routers
+├── alembic/                # Database migrations
+├── tests/                  # Backend test suite
+└── client/                 # Expo app (iOS, Android, web)
+    ├── src/
+    │   ├── api/            # HTTP client, token storage, auth
+    │   ├── app/            # Expo Router screens
+    │   ├── data/           # Repository interface, implementations, hooks
+    │   ├── domain/         # Types the app speaks, independent of transport
+    │   ├── features/       # Feature components and pure helpers
+    │   ├── state/          # Session context
+    │   └── ui/             # Shared components
+    └── ...
+```
+
+## Status
+
+Backend and authentication are complete. The client has sign-in, a prescription timeline grouped by visit date, and a detail view with page swiper and medication list. Capture, search, and offline sync are in progress.
+
+## Disclaimer
+
+Prescription Vault is a record-keeping tool, not a medical device.
+
+It does not provide medical advice, drug interaction warnings, or dosage recommendations.
