@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
+    LOG_LEVEL: str = "INFO"
+
+    LOGIN_RATE_LIMIT: str = "5/minute"
+    REGISTER_RATE_LIMIT: str = "10/hour"
+    REFRESH_RATE_LIMIT: str = "20/minute"
+    LOGOUT_RATE_LIMIT: str = "20/minute"
+
     STORAGE_DIR: str = "./storage"
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024  # 10 MB
     ALLOWED_UPLOAD_TYPES: set[str] = {

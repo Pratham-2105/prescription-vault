@@ -18,6 +18,19 @@ from app.services.storage import LocalStorage
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiter() -> AsyncGenerator[None] | Any:
+    """
+    Rate limit counters live in process memory and are shared across tests.
+    Without a reset, a test that logs in a few times can push a later test
+    over the limit — a failure that only appears when the suite runs in a
+    particular order. Clearing on both sides keeps each test independent.
+    """
+    limiter.reset()
+    yield
+    limiter.reset()
+
+
 @pytest_asyncio.fixture
 async def db_session() -> AsyncGenerator[AsyncSession]:
     """A fresh, empty in-memory database for every single test."""
@@ -108,9 +121,3 @@ async def prescription(
         headers=auth_headers,
     )
     return resp.json()
-
-
-@pytest.fixture(autouse=True)
-def reset_rate_limiter() -> None:
-    """Rate limit counters are process-global; clear them between tests."""
-    limiter.reset()

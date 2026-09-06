@@ -17,7 +17,8 @@ appointment.
 - **SQLAlchemy 2.0** (async) + **Alembic** — ORM and versioned migrations
 - **PostgreSQL** in production, SQLite for local development
 - **JWT** access tokens with rotating refresh tokens, bcrypt password hashing
-- **pytest** — 33 tests, 83% coverage
+- **slowapi** — rate limiting on all authentication endpoints
+- **pytest** — 45 tests, 83% coverage
 
 **Client**
 - **Expo** + **React Native Web** — one codebase for iOS, Android, and web
@@ -60,6 +61,13 @@ share one refresh call, and a request whose 401 arrives after another has
 already refreshed retries with the new token rather than rotating again. Both
 races are covered by tests, because neither is reproducible by hand.
 
+**Logs carry request IDs, never content.** The outermost middleware assigns
+each request an ID and puts it in a `ContextVar`, so every log line and the 500
+response body share it — a user can quote an ID and it maps to their exact
+request. The access log records method, path, status, and duration only. Query
+strings stay out of it, because `?q=diabetes` in a log file is a health
+disclosure.
+
 ## Running locally
 
 **Backend**
@@ -88,7 +96,7 @@ npm run web            # or: npm run android / npm run ios
 ```
 
 To run on a physical device, start the backend with `--host 0.0.0.0` and set
-`EXPO_PUBLIC_LAN_IP` to your machine's LAN address.
+`EXPO_PUBLIC_API_URL` to your machine's LAN address.
 
 ## Tests
 
@@ -104,13 +112,18 @@ cd client && npm test && npm run typecheck
 | POST | `/api/v1/auth/register` | Create account |
 | POST | `/api/v1/auth/login` | Obtain token pair |
 | POST | `/api/v1/auth/refresh` | Rotate refresh token |
+| POST | `/api/v1/auth/logout` | Revoke one refresh token |
 | GET | `/api/v1/patients` | List family profiles |
 | POST | `/api/v1/prescriptions` | Record a visit |
 | GET | `/api/v1/prescriptions` | Timeline, filtered and paginated |
 | POST | `/api/v1/prescriptions/{id}/attachments` | Upload a scan |
 | POST | `/api/v1/prescriptions/{id}/medications` | Add prescribed medication |
 
+Auth endpoints are rate limited per IP; limits are configurable via
+`LOGIN_RATE_LIMIT` and friends in `.env`.
+
 ## Project layout
+
 app/ FastAPI backend
 alembic/ database migrations
 tests/ backend test suite
@@ -120,17 +133,6 @@ src/app/ Expo Router screens
 src/state/ session context
 src/ui/ shared components
 
-
-## Roadmap
-
-- [x] Refresh token rotation with revocation
-- [x] Client auth: session restore, route guards, sign-in and registration
-- [ ] Prescription timeline, capture flow, and detail views
-- [ ] Image pipeline: EXIF stripping, re-encoding, thumbnails
-- [ ] Docker Compose and deployment
-- [ ] Offline-first sync with a change log and client outbox
-- [ ] Dose scheduling and local reminders
-- [ ] OCR-assisted extraction with user confirmation before saving
 
 ## Disclaimer
 

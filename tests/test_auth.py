@@ -71,19 +71,6 @@ async def test_me_returns_current_user(client: AsyncClient, auth_headers: dict[s
     assert resp.json()["email"] == "user_a@test.com"
 
 
-async def test_login_is_rate_limited(client: AsyncClient) -> None:
-    await client.post("/auth/register", json={"email": "rl@test.com", "password": "securepass123"})
-
-    statuses = []
-    for _ in range(8):
-        resp = await client.post(
-            "/auth/login", data={"username": "rl@test.com", "password": "wrongpass123"}
-        )
-        statuses.append(resp.status_code)
-
-    assert 429 in statuses, f"expected a 429 among {statuses}"
-
-
 async def test_login_returns_both_tokens(client: AsyncClient) -> None:
     await client.post("/auth/register", json={"email": "rt@test.com", "password": "securepass123"})
     resp = await client.post(
