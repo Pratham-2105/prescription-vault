@@ -15,6 +15,9 @@ class AttachmentRead(BaseModel):
     size_bytes: int
     page_number: int
     created_at: datetime
+    # Derived from Attachment.has_thumbnail. storage_key and thumbnail_key
+    # are deliberately absent — keys are opaque and never leave the server.
+    has_thumbnail: bool
 
 
 class PrescriptionBase(BaseModel):

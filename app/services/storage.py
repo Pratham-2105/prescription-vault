@@ -16,10 +16,27 @@ class StorageBackend(ABC):
         """Filesystem path if the backend has one, else None."""
 
 
-def build_key(*, user_id: uuid.UUID, prescription_id: uuid.UUID, filename: str | None) -> str:
-    suffix = Path(filename or "").suffix.lower()[:10] or ".bin"
+_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "application/pdf": ".pdf",
+}
+
+
+def build_key(*, user_id: uuid.UUID, prescription_id: uuid.UUID, content_type: str) -> str:
+    """
+    Extension comes from the sniffed content type, never the client filename.
+    A filename is attacker-controlled and, after re-encoding, no longer
+    describes what is actually on disk.
+    """
+    suffix = _EXTENSIONS.get(content_type, ".bin")
     today = date.today()
     return f"{user_id}/{today:%Y/%m}/{prescription_id}/{uuid.uuid4().hex}{suffix}"
+
+
+def thumbnail_key_for(key: str) -> str:
+    """Sibling key for the preview image: `<name>.jpg` -> `<name>_thumb.jpg`."""
+    path = Path(key)
+    return str(path.with_name(f"{path.stem}_thumb.jpg")).replace("\\", "/")
 
 
 class LocalStorage(StorageBackend):
