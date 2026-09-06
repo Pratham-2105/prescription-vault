@@ -1,5 +1,12 @@
-import { Stack } from "expo-router";
+import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { SessionProvider } from '@/state/session';
 
 export default function RootLayout() {
-  return <Stack />;
+  return (
+    <SessionProvider>
+      <StatusBar style="dark" />
+      <Stack screenOptions={{ headerShown: false }} />
+    </SessionProvider>
+  );
 }
