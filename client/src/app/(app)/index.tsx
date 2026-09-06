@@ -146,7 +146,12 @@ function countLabel(n: number, singular: string, plural: string): string {
 
 const styles = StyleSheet.create({
   list: { backgroundColor: colors.bg },
-  listContent: { paddingBottom: 32 },
+  listContent: {
+    paddingBottom: 32,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+  },
   centered: {
     flex: 1,
     alignItems: 'center',
