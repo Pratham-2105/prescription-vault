@@ -102,6 +102,10 @@ def process_upload(raw: bytes) -> ProcessedUpload:
             # metadata is dropped, or every portrait photo ends up sideways.
             image = ImageOps.exif_transpose(source)
 
+            # If exif_transpose returns None, use the original source image
+            if image is None:
+               image = source
+
             # Flatten transparency and drop palettes: JPEG has neither.
             if image.mode in ("RGBA", "LA", "P"):
                 background = Image.new("RGB", image.size, (255, 255, 255))
