@@ -22,8 +22,9 @@ Built to solve a specific problem: paper prescriptions get lost, and the "what w
 
 * **Expo** + **React Native Web** — one codebase for iOS, Android, and web
 * **Expo Router** — file-based routing with generated route types
+* **TanStack Query** — server-state cache, deduplication, and pagination
 * **TypeScript** in strict mode, with API types generated from the OpenAPI schema
-* **Vitest** — data-layer tests that run in plain Node, no simulator
+* **Vitest** — 9 data-layer tests that run in plain Node, no simulator
 
 ## Design Decisions
 
@@ -45,6 +46,18 @@ Endpoints cannot forget the ownership check because it runs before the handler d
 
 Protected screens live under a route group whose layout redirects unauthenticated visitors. A new screen is protected by virtue of where the file sits, rather than by remembering to add an individual check.
 
+### Screens talk to a repository, never to HTTP
+
+Every screen reads through a `PrescriptionRepository` interface. The HTTP implementation is the only code that knows a URL or a snake_case field name, and it maps wire objects into domain types before anything else sees them.
+
+Offline support means adding a SQLite implementation and changing one line of wiring. Screens that called `fetch` directly would need rewriting instead of swapping.
+
+### Server state is cached, not stored in components
+
+TanStack Query owns loading and error state, deduplicates concurrent requests for the same data, and merges paginated results. The timeline uses cursor-free `limit`/`offset` paging against the list endpoint's `total`.
+
+Image bytes are cached indefinitely: an attachment ID's contents never change, so a re-render or a return visit costs nothing.
+
 ### Uploads are sanitised, never trusted
 
 The client-declared `content_type` is ignored entirely — it is an attacker-controlled string. File type is determined from magic bytes, and a payload declaring itself a JPEG is rejected if its contents say otherwise.
@@ -54,6 +67,12 @@ Images are then re-encoded through Pillow, which is what strips the metadata: de
 This matters because a prescription photo carries the coordinates of the clinic where it was taken. That is health data leaking through a field nobody looks at. There is a test that plants real coordinates and asserts they are absent afterwards.
 
 Uploads are also capped at 2400px with a 400px thumbnail generated, and dimensions are checked from the header before any pixels are decoded — a small file can declare a hundred megapixels, and the request size limit says nothing about decompressed size.
+
+### Images are fetched, not linked
+
+An `<Image>` source cannot carry an `Authorization` header — the platform image loader issues its own request. Attachment bytes are fetched through the API client and handed to the view as data.
+
+The alternative, a token in the URL query string, would put a bearer credential into server logs, proxy logs, and browser history. Signed short-lived URLs are the production answer and arrive with object storage.
 
 ### Storage is behind an interface
 
@@ -113,91 +132,5 @@ Interactive API documentation:
 
 http://localhost:8000/docs
 
-### Client
-
-```bash
-cd client
-
-npm install
-
-# Regenerate API types
-# Backend must be running
-npm run types:api
-
-# Start the web client
-npm run web
-
-# Or start a native client
-npm run android
-npm run ios
-```
-
-To run the client on a physical device, start the backend with:
-
-```bash
-uvicorn app.main:app --host 0.0.0.0 --reload
-```
-
-Then set `EXPO_PUBLIC_API_URL` to your machine's LAN address.
-
-## Tests
-
-### Backend
-
-```bash
-pytest --cov=app
-```
-
-### Client
-
-```bash
-cd client
-
-npm test
-npm run typecheck
-```
-
-## API
-
-| Method | Path                                     | Purpose                          |
-| ------ | ---------------------------------------- | -------------------------------- |
-| `POST` | `/api/v1/auth/register`                  | Create account                   |
-| `POST` | `/api/v1/auth/login`                     | Obtain token pair                |
-| `POST` | `/api/v1/auth/refresh`                   | Rotate refresh token             |
-| `POST` | `/api/v1/auth/logout`                    | Revoke one refresh token         |
-| `GET`  | `/api/v1/patients`                       | List family profiles             |
-| `POST` | `/api/v1/prescriptions`                  | Record a visit                   |
-| `GET`  | `/api/v1/prescriptions`                  | Timeline, filtered and paginated |
-| `POST` | `/api/v1/prescriptions/{id}/attachments` | Upload a scan                    |
-| `GET`  | `/api/v1/attachments/{id}/file`          | Download the stored image        |
-| `GET`  | `/api/v1/attachments/{id}/thumbnail`     | Small preview for the timeline   |
-| `POST` | `/api/v1/prescriptions/{id}/medications` | Add prescribed medication        |
-
-Authentication endpoints are rate limited per IP. Limits are configurable through `LOGIN_RATE_LIMIT` and related settings in `.env`.
-
-Accepted uploads: JPEG, PNG, WebP, HEIC, and PDF. Images are re-encoded to JPEG; PDFs pass through unchanged.
-
-## Project Layout
-
-```text
-prescription-vault/
-├── app/                    # FastAPI backend
-│   ├── core/               # Config, security, logging, middleware, limiter
-│   ├── services/           # Storage backends, image pipeline
-│   └── api/                # Dependencies and versioned routers
-├── alembic/                # Database migrations
-├── tests/                  # Backend test suite
-└── client/                 # Expo app (iOS, Android, web)
-    ├── src/
-    │   ├── api/            # HTTP client, token storage, auth
-    │   ├── app/            # Expo Router screens
-    │   ├── state/          # Session context
-    │   └── ui/             # Shared components
-    └── ...
-```
-
-## Disclaimer
-
-Prescription Vault is a record-keeping tool, not a medical device.
-
-It does not provide medical advice, drug interaction warnings, or dosage recommendations.
+On Windows, if activation appears to succeed but commands are not found, call the
+virtualenv's executables directly:
