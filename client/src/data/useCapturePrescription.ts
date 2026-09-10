@@ -5,6 +5,12 @@ import { queryKeys } from './queryKeys';
 import { useRepositories } from './repositories';
 
 export type CapturePayload = {
+  /**
+   * Set when retrying a partially-saved visit. The prescription already
+   * exists, so creation is skipped and only the supplied pages and medicines
+   * are added. Without this, a retry would create a duplicate visit.
+   */
+  prescriptionId?: string;
   prescription: NewPrescription;
   files: PickedFile[];
   medications: NewMedication[];
@@ -12,10 +18,10 @@ export type CapturePayload = {
 
 export type CaptureResult = {
   prescriptionId: string;
-  /** Pages the server rejected or the device could not read. */
-  failedAttachments: number;
-  /** Medicines that failed to save. */
-  failedMedications: number;
+  /** Positions in `files` that did not upload. */
+  failedFileIndexes: number[];
+  /** Positions in `medications` that were not saved. */
+  failedMedicationIndexes: number[];
 };
 
 /**
@@ -24,11 +30,14 @@ export type CaptureResult = {
  * Deliberately three sequential calls with partial-failure tolerance rather
  * than one atomic operation:
  *
- *   1. Create the prescription. If this fails, nothing was saved — throw.
+ *   1. Create the prescription (skipped on retry). If this fails, nothing was
+ *      saved — throw.
  *   2. Upload each page. A failure here does NOT discard the visit; the
- *      record is the thing worth keeping, and the page can be retried from
- *      the detail screen.
+ *      record is the thing worth keeping.
  *   3. Add each medicine. Same reasoning.
+ *
+ * Failures are reported by index so the caller can retry exactly the items
+ * that did not land, against the visit that already exists.
  *
  * That shape is also what Phase C's outbox needs: every step independently
  * retryable.
@@ -38,34 +47,32 @@ export function useCapturePrescription() {
   const queryClient = useQueryClient();
 
   return useMutation<CaptureResult, Error, CapturePayload>({
-    mutationFn: async ({ prescription, files, medications }) => {
-      const created = await prescriptions.create(prescription);
+    mutationFn: async (payload) => {
+      const prescriptionId =
+        payload.prescriptionId ??
+        (await prescriptions.create(payload.prescription)).id;
 
-      let failedAttachments = 0;
+      const failedFileIndexes: number[] = [];
       // Sequential, not Promise.all: page_number is assigned server-side in
       // arrival order, so concurrent uploads would scramble the page order.
-      for (const file of files) {
+      for (const [index, file] of payload.files.entries()) {
         try {
-          await prescriptions.uploadAttachment(created.id, file);
+          await prescriptions.uploadAttachment(prescriptionId, file);
         } catch {
-          failedAttachments += 1;
+          failedFileIndexes.push(index);
         }
       }
 
-      let failedMedications = 0;
-      for (const medication of medications) {
+      const failedMedicationIndexes: number[] = [];
+      for (const [index, medication] of payload.medications.entries()) {
         try {
-          await prescriptions.addMedication(created.id, medication);
+          await prescriptions.addMedication(prescriptionId, medication);
         } catch {
-          failedMedications += 1;
+          failedMedicationIndexes.push(index);
         }
       }
 
-      return {
-        prescriptionId: created.id,
-        failedAttachments,
-        failedMedications,
-      };
+      return { prescriptionId, failedFileIndexes, failedMedicationIndexes };
     },
 
     onSuccess: (result) =>

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { FileReadError, type PickedFile } from '@/api/upload';
+import { type PickedFile } from '@/api/upload';
 import { useCapturePrescription } from '@/data/useCapturePrescription';
 import { useCreatePatient, usePatients } from '@/data/usePatients';
 import type { NewMedication } from '@/domain/prescription';
@@ -57,6 +57,12 @@ export default function NewPrescriptionScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
   const [partial, setPartial] = useState<string | null>(null);
+
+  /**
+   * Set once the visit exists on the server. From this point the visit itself
+   * must never be created again — saving retries only the pages and medicines
+   * that failed, against this id.
+   */
   const [savedId, setSavedId] = useState<string | null>(null);
 
   const patientList = patients.data ?? [];
@@ -174,19 +180,24 @@ export default function NewPrescriptionScreen() {
       return;
     }
 
-    const medicineList: NewMedication[] = medications
-      .filter((row) => row.name.trim().length > 0)
-      .map((row) => ({
-        name: row.name,
-        strength: row.strength,
-        frequencyCode: row.frequencyCode,
-      }));
+    // Rows with no name were never real entries. Keep the drafts alongside
+    // the payload so a failure index can be mapped back to a row key.
+    const submittedRows = medications.filter((row) => row.name.trim().length > 0);
+    const medicineList: NewMedication[] = submittedRows.map((row) => ({
+      name: row.name,
+      strength: row.strength,
+      frequencyCode: row.frequencyCode,
+    }));
+    const submittedPages = pages;
 
     setFormError(null);
     setPartial(null);
 
     capture.mutate(
       {
+        // Undefined on the first attempt, set on every retry. This is what
+        // stops a retry from creating a second visit.
+        prescriptionId: savedId ?? undefined,
         prescription: {
           patientId: selectedPatientId,
           visitDate,
@@ -196,20 +207,24 @@ export default function NewPrescriptionScreen() {
           reason,
           notes,
         },
-        files: pages.map(({ uri, name, mimeType }) => ({ uri, name, mimeType })),
+        files: submittedPages.map(({ uri, name, mimeType }) => ({
+          uri,
+          name,
+          mimeType,
+        })),
         medications: medicineList,
       },
       {
         onSuccess: (result) => {
           const problems: string[] = [];
-          if (result.failedAttachments > 0) {
+          if (result.failedFileIndexes.length > 0) {
             problems.push(
-              `${String(result.failedAttachments)} page(s) did not upload`,
+              `${String(result.failedFileIndexes.length)} page(s) did not upload`,
             );
           }
-          if (result.failedMedications > 0) {
+          if (result.failedMedicationIndexes.length > 0) {
             problems.push(
-              `${String(result.failedMedications)} medicine(s) were not saved`,
+              `${String(result.failedMedicationIndexes.length)} medicine(s) were not saved`,
             );
           }
 
@@ -218,11 +233,24 @@ export default function NewPrescriptionScreen() {
             return;
           }
 
-          // The visit itself was saved. Say so plainly rather than navigating
-          // away and leaving the user to discover the gap later.
+          // The visit exists. Record its id so any further save adds to it
+          // rather than creating another, and strip the form down to only
+          // the items that failed so a retry cannot duplicate the ones that
+          // already landed.
           setSavedId(result.prescriptionId);
+
+          const failedFiles = new Set(result.failedFileIndexes);
+          setPages(submittedPages.filter((_, index) => failedFiles.has(index)));
+
+          const failedKeys = new Set(
+            result.failedMedicationIndexes
+              .map((index) => submittedRows[index]?.key)
+              .filter((key): key is string => key !== undefined),
+          );
+          setMedications(submittedRows.filter((row) => failedKeys.has(row.key)));
+
           setPartial(
-            `The visit was saved, but ${problems.join(' and ')}. You can add them from the visit.`,
+            `The visit was saved, but ${problems.join(' and ')}. What is left below can be retried, or you can open the visit and add it later.`,
           );
         },
       },
@@ -236,17 +264,19 @@ export default function NewPrescriptionScreen() {
     openSavedVisit,
     pages,
     reason,
+    savedId,
     selectedPatientId,
     specialty,
     visitDate,
   ]);
 
-  const saveError =
-    capture.error instanceof FileReadError
-      ? capture.error.message
-      : capture.error instanceof Error
-        ? capture.error.message
-        : null;
+  const saveError = capture.error instanceof Error ? capture.error.message : null;
+
+  // Once the visit exists, its own details are fixed — editing them here would
+  // silently do nothing, because a retry no longer sends them.
+  const detailsLocked = savedId !== null;
+  const busy = capture.isPending;
+  const inputsDisabled = busy || detailsLocked;
 
   return (
     <ScrollView
@@ -267,6 +297,7 @@ export default function NewPrescriptionScreen() {
             onPress={() => {
               if (savedId) openSavedVisit(savedId);
             }}
+            disabled={busy}
           />
         </View>
       ) : null}
@@ -288,11 +319,11 @@ export default function NewPrescriptionScreen() {
           }))}
           selectedId={selectedPatientId}
           onSelect={setPatientId}
-          disabled={capture.isPending}
+          disabled={inputsDisabled}
         />
       )}
 
-      {showAddPatient || patientList.length === 0 ? (
+      {detailsLocked ? null : showAddPatient || patientList.length === 0 ? (
         <View style={styles.inlineAdd}>
           <Field
             label="Name"
@@ -324,6 +355,12 @@ export default function NewPrescriptionScreen() {
 
       <Text style={styles.sectionTitle}>The visit</Text>
 
+      {detailsLocked ? (
+        <Text style={styles.muted}>
+          Already saved. These details can be edited from the visit itself.
+        </Text>
+      ) : null}
+
       <Field
         label="Visit date"
         value={visitDate}
@@ -332,7 +369,7 @@ export default function NewPrescriptionScreen() {
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType={Platform.OS === 'web' ? 'default' : 'numbers-and-punctuation'}
-        editable={!capture.isPending}
+        editable={!inputsDisabled}
       />
       <Field
         label="Doctor"
@@ -340,14 +377,14 @@ export default function NewPrescriptionScreen() {
         onChangeText={setDoctorName}
         placeholder="Dr. …"
         autoCapitalize="words"
-        editable={!capture.isPending}
+        editable={!inputsDisabled}
       />
       <Field
         label="Clinic or hospital"
         value={clinicName}
         onChangeText={setClinicName}
         autoCapitalize="words"
-        editable={!capture.isPending}
+        editable={!inputsDisabled}
       />
       <Field
         label="Specialty"
@@ -355,13 +392,13 @@ export default function NewPrescriptionScreen() {
         onChangeText={setSpecialty}
         placeholder="Dermatology, ENT, …"
         autoCapitalize="words"
-        editable={!capture.isPending}
+        editable={!inputsDisabled}
       />
       <Field
         label="Reason for visit"
         value={reason}
         onChangeText={setReason}
-        editable={!capture.isPending}
+        editable={!inputsDisabled}
       />
       <Field
         label="Notes"
@@ -369,13 +406,15 @@ export default function NewPrescriptionScreen() {
         onChangeText={setNotes}
         multiline
         style={styles.multiline}
-        editable={!capture.isPending}
+        editable={!inputsDisabled}
       />
 
       <Text style={styles.sectionTitle}>Pages</Text>
 
       {pages.length === 0 ? (
-        <Text style={styles.muted}>No pages added yet.</Text>
+        <Text style={styles.muted}>
+          {detailsLocked ? 'All pages uploaded.' : 'No pages added yet.'}
+        </Text>
       ) : (
         pages.map((page, index) => (
           <View key={page.key} style={styles.pageRow}>
@@ -388,7 +427,7 @@ export default function NewPrescriptionScreen() {
               onPress={() => {
                 removePage(page.key);
               }}
-              disabled={capture.isPending}
+              disabled={busy}
             >
               <Text style={styles.remove}>Remove</Text>
             </Pressable>
@@ -403,7 +442,7 @@ export default function NewPrescriptionScreen() {
               label="Take photo"
               variant="secondary"
               onPress={handleTakePhoto}
-              disabled={capture.isPending}
+              disabled={busy}
             />
           </View>
         )}
@@ -412,7 +451,7 @@ export default function NewPrescriptionScreen() {
             label="Choose image"
             variant="secondary"
             onPress={handlePickFromLibrary}
-            disabled={capture.isPending}
+            disabled={busy}
           />
         </View>
       </View>
@@ -428,7 +467,7 @@ export default function NewPrescriptionScreen() {
               updateMedication(row.key, { name: text });
             }}
             autoCapitalize="words"
-            editable={!capture.isPending}
+            editable={!busy}
           />
           <Field
             label="Strength"
@@ -438,7 +477,7 @@ export default function NewPrescriptionScreen() {
             }}
             placeholder="500 mg"
             autoCapitalize="none"
-            editable={!capture.isPending}
+            editable={!busy}
           />
           <Field
             label="Frequency"
@@ -449,14 +488,14 @@ export default function NewPrescriptionScreen() {
             placeholder="1-0-1"
             autoCapitalize="none"
             autoCorrect={false}
-            editable={!capture.isPending}
+            editable={!busy}
           />
           <Pressable
             accessibilityRole="button"
             onPress={() => {
               removeMedication(row.key);
             }}
-            disabled={capture.isPending}
+            disabled={busy}
           >
             <Text style={styles.remove}>Remove medicine</Text>
           </Pressable>
@@ -467,23 +506,32 @@ export default function NewPrescriptionScreen() {
         label="Add a medicine"
         variant="secondary"
         onPress={addMedicationRow}
-        disabled={capture.isPending}
+        disabled={busy}
       />
 
       <View style={styles.actions}>
         <Button
-          label="Save visit"
+          label={detailsLocked ? 'Retry remaining' : 'Save visit'}
           onPress={handleSave}
-          busy={capture.isPending}
-          disabled={!selectedPatientId}
+          busy={busy}
+          disabled={
+            !selectedPatientId ||
+            // Nothing left to retry: the only sensible action is opening the
+            // visit, which the banner above already offers.
+            (detailsLocked && pages.length === 0 && medications.length === 0)
+          }
         />
         <Button
-          label="Cancel"
+          label={detailsLocked ? 'Done' : 'Cancel'}
           variant="secondary"
           onPress={() => {
+            if (savedId) {
+              openSavedVisit(savedId);
+              return;
+            }
             router.back();
           }}
-          disabled={capture.isPending}
+          disabled={busy}
         />
       </View>
 
