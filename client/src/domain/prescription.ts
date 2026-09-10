@@ -32,6 +32,8 @@ export type Attachment = {
   pageNumber: number;
   contentType: string;
   sizeBytes: number;
+  /** False for PDFs — requesting a thumbnail for those 404s. */
+  hasThumbnail: boolean;
 };
 
 /** Filters the user can apply. Every field optional; absent means "no filter". */
@@ -63,4 +65,32 @@ export type Medication = {
   durationDays: number | null;
   startDate: IsoDate | null;
   isActive: boolean;
+};
+
+/** The values the API accepts for food_relation. */
+export type FoodRelation = 'before_food' | 'after_food' | 'with_food' | 'any';
+
+/**
+ * What the capture form produces. Distinct from Prescription: no id, no
+ * attachments, and the optional fields are genuinely absent rather than null.
+ */
+export type NewPrescription = {
+  patientId: string;
+  visitDate: IsoDate;
+  doctorName?: string | null;
+  clinicName?: string | null;
+  specialty?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+};
+
+/** One medicine as typed into the capture form. Only the name is required. */
+export type NewMedication = {
+  name: string;
+  strength?: string | null;
+  form?: string | null;
+  frequencyCode?: string | null;
+  foodRelation?: FoodRelation | null;
+  durationDays?: number | null;
+  startDate?: IsoDate | null;
 };

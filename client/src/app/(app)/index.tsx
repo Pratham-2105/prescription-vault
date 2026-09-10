@@ -33,6 +33,10 @@ export default function TimelineScreen() {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  const goToCapture = useCallback(() => {
+    router.push('/prescription/new');
+  }, [router]);
+
   // First load, nothing cached.
   if (isPending) {
     return (
@@ -61,50 +65,68 @@ export default function TimelineScreen() {
   const sections = data.sections;
 
   return (
-    <SectionList
-      style={styles.list}
-      contentContainerStyle={styles.listContent}
-      sections={sections}
-      keyExtractor={(item) => item.id}
-      stickySectionHeadersEnabled
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefetching}
-          onRefresh={() => void refetch()}
-          tintColor={colors.accent}
-        />
-      }
-      onEndReached={handleEndReached}
-      onEndReachedThreshold={0.4}
-      renderSectionHeader={({ section }) => (
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{section.title}</Text>
-        </View>
-      )}
-      renderItem={({ item }) => (
-        <PrescriptionCard
-          prescription={item}
-          onPress={() =>
-            router.push({ pathname: '/prescription/[id]', params: { id: item.id } })
-          }
-        />
-      )}
-      ListEmptyComponent={
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No prescriptions yet</Text>
-          <Text style={styles.emptyBody}>
-            Add a visit to start building your record.
-          </Text>
-        </View>
-      }
-      ListFooterComponent={
-        isFetchingNextPage ? (
-          <View style={styles.footer}>
-            <ActivityIndicator color={colors.muted} />
+    <View style={styles.screen}>
+      <SectionList
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        stickySectionHeadersEnabled
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={() => void refetch()}
+            tintColor={colors.accent}
+          />
+        }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.4}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
           </View>
-        ) : null
-      }
-    />
+        )}
+        renderItem={({ item }) => (
+          <PrescriptionCard
+            prescription={item}
+            onPress={() =>
+              router.push({ pathname: '/prescription/[id]', params: { id: item.id } })
+            }
+          />
+        )}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>No prescriptions yet</Text>
+            <Text style={styles.emptyBody}>
+              Add a visit to start building your record.
+            </Text>
+            <View style={styles.emptyAction}>
+              <Button label="Add a visit" onPress={goToCapture} />
+            </View>
+          </View>
+        }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View style={styles.footer}>
+              <ActivityIndicator color={colors.muted} />
+            </View>
+          ) : null
+        }
+      />
+
+      {sections.length > 0 ? (
+        <View style={styles.fabWrap} pointerEvents="box-none">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add a visit"
+            onPress={goToCapture}
+            style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+          >
+            <Text style={styles.fabLabel}>New visit</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -145,9 +167,10 @@ function countLabel(n: number, singular: string, plural: string): string {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.bg },
   list: { backgroundColor: colors.bg },
   listContent: {
-    paddingBottom: 32,
+    paddingBottom: 96,
     width: '100%',
     maxWidth: 720,
     alignSelf: 'center',
@@ -191,5 +214,23 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', padding: 48, gap: 6 },
   emptyTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
   emptyBody: { fontSize: 14, color: colors.muted, textAlign: 'center' },
+  emptyAction: { marginTop: 16, minWidth: 200 },
   footer: { paddingVertical: 20 },
+  fabWrap: {
+    position: 'absolute',
+    right: 0,
+    left: 0,
+    bottom: 24,
+    alignItems: 'center',
+  },
+  fab: {
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    minHeight: 50,
+    justifyContent: 'center',
+  },
+  fabPressed: { opacity: 0.85 },
+  fabLabel: { color: '#FFF', fontSize: 16, fontWeight: '600' },
 });

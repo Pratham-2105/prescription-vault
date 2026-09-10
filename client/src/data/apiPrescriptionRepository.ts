@@ -1,8 +1,11 @@
 import type { ApiClient } from '@/api/client';
+import { buildAttachmentForm, type PickedFile } from '@/api/upload';
 import type { components } from '@/types/api';
 import type {
   Attachment,
   Medication,
+  NewMedication,
+  NewPrescription,
   Page,
   Prescription,
   PrescriptionListItem,
@@ -13,12 +16,14 @@ import type {
   PrescriptionRepository,
 } from './prescriptionRepository';
 
-// The generated OpenAPI types. Confirm these names exist in types/api.d.ts.
+// The generated OpenAPI types.
 type ApiPage = components['schemas']['PrescriptionPage'];
 type ApiItem = components['schemas']['PrescriptionListItem'];
 type ApiPrescription = components['schemas']['PrescriptionRead'];
+type ApiPrescriptionCreate = components['schemas']['PrescriptionCreate'];
 type ApiAttachment = components['schemas']['AttachmentRead'];
 type ApiMedication = components['schemas']['MedicationRead'];
+type ApiMedicationCreate = components['schemas']['MedicationCreate'];
 
 /** Wire format -> domain. The one place snake_case is allowed to exist. */
 function toDomain(dto: ApiItem): PrescriptionListItem {
@@ -33,7 +38,6 @@ function toDomain(dto: ApiItem): PrescriptionListItem {
     medicationCount: dto.medication_count,
   };
 }
-
 
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -57,6 +61,7 @@ function attachmentToDomain(dto: ApiAttachment): Attachment {
     pageNumber: dto.page_number,
     contentType: dto.content_type,
     sizeBytes: dto.size_bytes,
+    hasThumbnail: dto.has_thumbnail,
   };
 }
 
@@ -74,8 +79,30 @@ function medicationToDomain(dto: ApiMedication): Medication {
   };
 }
 
+function prescriptionToDomain(dto: ApiPrescription): Prescription {
+  return {
+    id: dto.id,
+    patientId: dto.patient_id,
+    visitDate: dto.visit_date,
+    doctorName: dto.doctor_name ?? null,
+    clinicName: dto.clinic_name ?? null,
+    specialty: dto.specialty ?? null,
+    reason: dto.reason ?? null,
+    notes: dto.notes ?? null,
+    attachments: (dto.attachments ?? [])
+      .map(attachmentToDomain)
+      .sort((a, b) => a.pageNumber - b.pageNumber),
+  };
+}
+
+/** Blank input is an absent value, not an empty string. */
+function emptyToNull(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export class ApiPrescriptionRepository implements PrescriptionRepository {
-  constructor(private readonly api: ApiClient) { }
+  constructor(private readonly api: ApiClient) {}
 
   async list({
     limit,
@@ -112,19 +139,7 @@ export class ApiPrescriptionRepository implements PrescriptionRepository {
       `/api/v1/prescriptions/${id}`,
       { signal },
     );
-    return {
-      id: dto.id,
-      patientId: dto.patient_id,
-      visitDate: dto.visit_date,
-      doctorName: dto.doctor_name ?? null,
-      clinicName: dto.clinic_name ?? null,
-      specialty: dto.specialty ?? null,
-      reason: dto.reason ?? null,
-      notes: dto.notes ?? null,
-      attachments: (dto.attachments ?? [])
-        .map(attachmentToDomain)
-        .sort((a, b) => a.pageNumber - b.pageNumber),
-    };
+    return prescriptionToDomain(dto);
   }
 
   async listMedications(
@@ -151,4 +166,63 @@ export class ApiPrescriptionRepository implements PrescriptionRepository {
     return blobToDataUrl(await response.blob());
   }
 
+  // ------------------------------------------------------------------ writes
+
+  async create(
+    input: NewPrescription,
+    signal?: AbortSignal,
+  ): Promise<Prescription> {
+    const body: ApiPrescriptionCreate = {
+      patient_id: input.patientId,
+      visit_date: input.visitDate,
+      doctor_name: emptyToNull(input.doctorName),
+      clinic_name: emptyToNull(input.clinicName),
+      specialty: emptyToNull(input.specialty),
+      reason: emptyToNull(input.reason),
+      notes: emptyToNull(input.notes),
+    };
+
+    const dto = await this.api.post<ApiPrescription>('/api/v1/prescriptions', {
+      body,
+      signal,
+    });
+    return prescriptionToDomain(dto);
+  }
+
+  async uploadAttachment(
+    prescriptionId: string,
+    file: PickedFile,
+    signal?: AbortSignal,
+  ): Promise<Attachment> {
+    // Reads the local file and throws FileReadError if the device refuses.
+    const multipart = await buildAttachmentForm(file);
+
+    const dto = await this.api.post<ApiAttachment>(
+      `/api/v1/prescriptions/${prescriptionId}/attachments`,
+      { multipart, signal },
+    );
+    return attachmentToDomain(dto);
+  }
+
+  async addMedication(
+    prescriptionId: string,
+    input: NewMedication,
+    signal?: AbortSignal,
+  ): Promise<Medication> {
+    const body: ApiMedicationCreate = {
+      name: input.name.trim(),
+      strength: emptyToNull(input.strength),
+      form: emptyToNull(input.form),
+      frequency_code: emptyToNull(input.frequencyCode),
+      food_relation: input.foodRelation ?? null,
+      duration_days: input.durationDays ?? null,
+      start_date: input.startDate ?? null,
+    };
+
+    const dto = await this.api.post<ApiMedication>(
+      `/api/v1/prescriptions/${prescriptionId}/medications`,
+      { body, signal },
+    );
+    return medicationToDomain(dto);
+  }
 }

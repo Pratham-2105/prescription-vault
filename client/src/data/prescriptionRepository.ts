@@ -1,5 +1,9 @@
+import type { PickedFile } from '@/api/upload';
 import type {
+  Attachment,
   Medication,
+  NewMedication,
+  NewPrescription,
   Page,
   Prescription,
   PrescriptionFilters,
@@ -44,4 +48,22 @@ export interface PrescriptionRepository {
     variant: ImageVariant,
     signal?: AbortSignal,
   ): Promise<string>;
+
+  // ------------------------------------------------------------------ writes
+  // Phase C intercepts exactly these three: the SQLite implementation writes
+  // locally, enqueues an outbox entry, and returns the local row.
+
+  create(input: NewPrescription, signal?: AbortSignal): Promise<Prescription>;
+
+  uploadAttachment(
+    prescriptionId: string,
+    file: PickedFile,
+    signal?: AbortSignal,
+  ): Promise<Attachment>;
+
+  addMedication(
+    prescriptionId: string,
+    input: NewMedication,
+    signal?: AbortSignal,
+  ): Promise<Medication>;
 }
