@@ -36,8 +36,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://vault:vault@postgres:5432/vault
       # Dev value. Production sets this from a real secret store.
       JWT_SECRET: local-development-secret-not-for-production
-            STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      # Quoted because ${VAR:-default} contains a colon, which an unquoted
+      # YAML scalar cannot hold. Values come from the host environment or a
+      # root .env file, so credentials stay out of this committed file.
       STORAGE_BACKEND: "${STORAGE_BACKEND:-local}"
+      STORAGE_DIR: "/app/storage"
       R2_ACCOUNT_ID: "${R2_ACCOUNT_ID:-}"
       R2_ACCESS_KEY_ID: "${R2_ACCESS_KEY_ID:-}"
       R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY:-}"
@@ -45,8 +48,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Uploaded files survive `docker compose down`. Replaced by R2 in the
-      # next step — a container filesystem is not a place to keep records.
+      # Uploaded files survive `docker compose down`. A container filesystem
+      # is not a place to keep records; the named volume is.
       - storage-data:/app/storage
 
 volumes:

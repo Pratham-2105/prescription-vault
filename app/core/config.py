@@ -55,14 +55,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_r2_credentials(self) -> Self:
-        """
-        Fail at startup rather than at first upload.
-
-        A misconfigured R2 backend that silently fell back to local disk would
-        write medical records to a filesystem that disappears on the next
-        deploy, and nothing would look wrong until someone went looking for a
-        prescription that was no longer there.
-        """
+        # "local" writes to STORAGE_DIR; "s3" writes to S3-compatible object
+        # storage. A container filesystem does not survive redeploy, so a
+        # deployed "local" backend requires STORAGE_DIR to be a mounted volume.
         if self.STORAGE_BACKEND != "r2":
             return self
 

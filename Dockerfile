@@ -48,9 +48,11 @@ COPY --chown=appuser:appuser alembic.ini ./
 COPY --chown=appuser:appuser alembic ./alembic
 COPY --chown=appuser:appuser app ./app
 
-# Mount point for the storage volume. Created and owned here so the
-# non-root user can write to it.
-RUN mkdir -p /app/storage && chown appuser:appuser /app/storage
+# Mount point for the storage volume, plus /app itself: WORKDIR created it
+# root-owned, so without this a run with no DATABASE_URL override falls back
+# to the relative SQLite default and alembic dies trying to create /app/dev.db
+# as a non-root user.
+RUN mkdir -p /app/storage && chown -R appuser:appuser /app
 
 USER appuser
 
