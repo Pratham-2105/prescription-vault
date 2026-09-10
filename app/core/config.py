@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     LOGOUT_RATE_LIMIT: str = "20/minute"
 
     # "local" writes to STORAGE_DIR; "r2" writes to Cloudflare R2.
-    # A container filesystem does not survive redeploy, so any deployed
-    # environment must use "r2".
+    # A container filesystem does not survive redeploy, so a deployed "local"
+    # backend requires STORAGE_DIR to point at a mounted volume.
     STORAGE_BACKEND: Literal["local", "r2"] = "local"
     STORAGE_DIR: str = "./storage"
 
@@ -54,10 +54,32 @@ class Settings(BaseSettings):
     ]
 
     @model_validator(mode="after")
+    def _use_async_driver(self) -> Self:
+        """
+        Hosting providers hand over DATABASE_URL as `postgresql://`, but
+        SQLAlchemy needs the driver named explicitly to pick the async one —
+        without it, it falls back to psycopg2, which is not installed and
+        would block the event loop even if it were.
+
+        Rewriting here means the platform's variable can be used verbatim,
+        rather than every deploy needing a hand-edited copy of it.
+        """
+        if self.DATABASE_URL.startswith("postgresql://"):
+            self.DATABASE_URL = self.DATABASE_URL.replace(
+                "postgresql://", "postgresql+asyncpg://", 1
+            )
+        return self
+
+    @model_validator(mode="after")
     def _require_r2_credentials(self) -> Self:
-        # "local" writes to STORAGE_DIR; "s3" writes to S3-compatible object
-        # storage. A container filesystem does not survive redeploy, so a
-        # deployed "local" backend requires STORAGE_DIR to be a mounted volume.
+        """
+        Fail at startup rather than at first upload.
+
+        A misconfigured R2 backend that silently fell back to local disk would
+        write medical records to a filesystem that disappears on the next
+        deploy, and nothing would look wrong until someone went looking for a
+        prescription that was no longer there.
+        """
         if self.STORAGE_BACKEND != "r2":
             return self
 
