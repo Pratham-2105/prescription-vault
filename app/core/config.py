@@ -1,12 +1,14 @@
 from functools import lru_cache
+from typing import Literal, Self
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    PROJECT_NAME: str = "Prescription Value"
+    PROJECT_NAME: str = "Prescription Vault"
     API_V1_PREFIX: str = "/api/v1"
     ENVIRONMENT: str = "development"
 
@@ -24,7 +26,18 @@ class Settings(BaseSettings):
     REFRESH_RATE_LIMIT: str = "20/minute"
     LOGOUT_RATE_LIMIT: str = "20/minute"
 
+    # "local" writes to STORAGE_DIR; "r2" writes to Cloudflare R2.
+    # A container filesystem does not survive redeploy, so any deployed
+    # environment must use "r2".
+    STORAGE_BACKEND: Literal["local", "r2"] = "local"
     STORAGE_DIR: str = "./storage"
+
+    # Required when STORAGE_BACKEND == "r2", validated below.
+    R2_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_BUCKET: str | None = None
+
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024  # 10 MB
     ALLOWED_UPLOAD_TYPES: set[str] = {
         "image/jpeg",
@@ -39,6 +52,33 @@ class Settings(BaseSettings):
         "http://localhost:8081",
         "http://localhost:19006",
     ]
+
+    @model_validator(mode="after")
+    def _require_r2_credentials(self) -> Self:
+        """
+        Fail at startup rather than at first upload.
+
+        A misconfigured R2 backend that silently fell back to local disk would
+        write medical records to a filesystem that disappears on the next
+        deploy, and nothing would look wrong until someone went looking for a
+        prescription that was no longer there.
+        """
+        if self.STORAGE_BACKEND != "r2":
+            return self
+
+        missing = [
+            name
+            for name in (
+                "R2_ACCOUNT_ID",
+                "R2_ACCESS_KEY_ID",
+                "R2_SECRET_ACCESS_KEY",
+                "R2_BUCKET",
+            )
+            if not getattr(self, name)
+        ]
+        if missing:
+            raise ValueError(f"STORAGE_BACKEND is 'r2' but these are unset: {', '.join(missing)}")
+        return self
 
 
 @lru_cache

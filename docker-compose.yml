@@ -1,0 +1,54 @@
+# Local production-shaped stack: the API against real Postgres instead of
+# SQLite. This is where the timezone class of bug shows up (handover §10.9)
+# before it reaches a deployed environment.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: vault
+      POSTGRES_PASSWORD: vault
+      POSTGRES_DB: vault
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      # Exposed so psql or a GUI on the host can connect. 5433 avoids a clash
+      # with any Postgres already installed on Windows.
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vault -d vault"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      postgres:
+        # Waits for the healthcheck, not just for the container to exist.
+        # Without this, `alembic upgrade head` races Postgres startup and the
+        # API dies on first boot.
+        condition: service_healthy
+    environment:
+      # "postgres" is the service name above — compose runs a DNS server on
+      # the shared network, so containers reach each other by service name.
+      # Port 5432 here, not 5433: that mapping is for the host only.
+      DATABASE_URL: postgresql+asyncpg://vault:vault@postgres:5432/vault
+      # Dev value. Production sets this from a real secret store.
+      JWT_SECRET: local-development-secret-not-for-production
+            STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_BACKEND: "${STORAGE_BACKEND:-local}"
+      R2_ACCOUNT_ID: "${R2_ACCOUNT_ID:-}"
+      R2_ACCESS_KEY_ID: "${R2_ACCESS_KEY_ID:-}"
+      R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY:-}"
+      R2_BUCKET: "${R2_BUCKET:-}"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Uploaded files survive `docker compose down`. Replaced by R2 in the
+      # next step — a container filesystem is not a place to keep records.
+      - storage-data:/app/storage
+
+volumes:
+  postgres-data:
+  storage-data:
