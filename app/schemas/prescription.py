@@ -67,6 +67,10 @@ class PrescriptionListItem(BaseModel):
     reason: str | None
     attachment_count: int = 0
     medication_count: int = 0
+    # First page that actually has a preview, so the timeline can show one
+    # without a second request per row. Null when the visit has no pages, or
+    # only PDFs — those have no thumbnail.
+    thumbnail_attachment_id: uuid.UUID | None = None
 
 
 class PrescriptionPage(BaseModel):

@@ -77,6 +77,21 @@ async def list_prescriptions(
         .where(Medication.prescription_id == Prescription.id)
         .scalar_subquery()
     )
+    # Lowest-numbered page that actually has a preview, so the timeline can
+    # show one without a second request per row. A correlated subquery rather
+    # than a join: a join would multiply rows and break the counts above.
+    # Filters on thumbnail_key, not has_thumbnail — the latter is a Python
+    # property and means nothing to SQL.
+    thumbnail_attachment_id = (
+        select(Attachment.id)
+        .where(
+            Attachment.prescription_id == Prescription.id,
+            Attachment.thumbnail_key.is_not(None),
+        )
+        .order_by(Attachment.page_number)
+        .limit(1)
+        .scalar_subquery()
+    )
 
     base = (
         select(Prescription)
@@ -111,6 +126,7 @@ async def list_prescriptions(
         base.add_columns(
             attachment_count.label("attachment_count"),
             medication_count.label("medication_count"),
+            thumbnail_attachment_id.label("thumbnail_attachment_id"),
         )
         .order_by(Prescription.visit_date.desc(), Prescription.created_at.desc())
         .limit(limit)
@@ -127,8 +143,9 @@ async def list_prescriptions(
             reason=p.reason,
             attachment_count=a_count,
             medication_count=m_count,
+            thumbnail_attachment_id=thumb_id,
         )
-        for p, a_count, m_count in (await db.execute(rows_stmt)).all()
+        for p, a_count, m_count, thumb_id in (await db.execute(rows_stmt)).all()
     ]
 
     return PrescriptionPage(items=items, total=total, limit=limit, offset=offset)
@@ -163,11 +180,6 @@ async def delete_prescription(
         await storage.delete(key)
 
 
-@router.post(
-    "/prescriptions/{prescription_id}/attachments",
-    response_model=AttachmentRead,
-    status_code=status.HTTP_201_CREATED,
-)
 @router.post(
     "/prescriptions/{prescription_id}/attachments",
     response_model=AttachmentRead,
