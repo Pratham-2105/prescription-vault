@@ -13,13 +13,34 @@ from app.models.medication import Medication
 from app.models.patient import Patient
 from app.models.prescription import Attachment, Prescription
 from app.models.user import User
-from app.services.storage import LocalStorage, StorageBackend
+from app.services.storage import LocalStorage, R2Storage, StorageBackend
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_PREFIX}/auth/login")
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
-_storage = LocalStorage(settings.STORAGE_DIR)
+
+def _build_storage() -> StorageBackend:
+    """
+    Chosen once at import. config.py has already checked that the R2
+    credentials are present, so the assertions below only narrow the types
+    for mypy — they are not the real validation.
+    """
+    if settings.STORAGE_BACKEND == "r2":
+        assert settings.R2_ACCOUNT_ID is not None
+        assert settings.R2_ACCESS_KEY_ID is not None
+        assert settings.R2_SECRET_ACCESS_KEY is not None
+        assert settings.R2_BUCKET is not None
+        return R2Storage(
+            account_id=settings.R2_ACCOUNT_ID,
+            access_key_id=settings.R2_ACCESS_KEY_ID,
+            secret_access_key=settings.R2_SECRET_ACCESS_KEY,
+            bucket=settings.R2_BUCKET,
+        )
+    return LocalStorage(settings.STORAGE_DIR)
+
+
+_storage = _build_storage()
 
 
 def get_storage() -> StorageBackend:

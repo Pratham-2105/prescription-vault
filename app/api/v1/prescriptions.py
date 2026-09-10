@@ -3,7 +3,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, or_, select
 
 from app.api.deps import (
@@ -30,7 +30,7 @@ from app.services.images import (
     UnsupportedFileError,
     process_upload,
 )
-from app.services.storage import build_key, thumbnail_key_for
+from app.services.storage import ObjectNotFoundError, build_key, thumbnail_key_for
 
 router = APIRouter(tags=["prescriptions"])
 
@@ -239,26 +239,56 @@ async def upload_attachment(
     return attachment
 
 
+async def _serve_object(
+    storage: Storage,
+    key: str,
+    *,
+    media_type: str,
+    filename: str | None = None,
+    missing_detail: str,
+) -> Response:
+    """
+    Serve stored bytes from whichever backend is configured.
+
+    Local disk gets FileResponse so the OS streams the file and the process
+    never holds it in memory. Object storage has no path, so the bytes come
+    back through load(). Attachments are capped at 10 MB, so buffering one is
+    bounded — a streaming passthrough would be the answer for larger objects.
+    """
+    path = storage.local_path(key)
+    if path is not None:
+        return FileResponse(path, media_type=media_type, filename=filename)
+
+    try:
+        data = await storage.load(key)
+    except ObjectNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, missing_detail) from exc
+
+    headers = {"Content-Disposition": f'inline; filename="{filename}"'} if filename else None
+    return Response(content=data, media_type=media_type, headers=headers)
+
+
 @router.get("/attachments/{attachment_id}/thumbnail")
-async def download_thumbnail(attachment: OwnedAttachment, storage: Storage) -> FileResponse:
+async def download_thumbnail(attachment: OwnedAttachment, storage: Storage) -> Response:
     """Small preview for the timeline. PDFs have none."""
     if attachment.thumbnail_key is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No thumbnail for this file")
-    path = storage.local_path(attachment.thumbnail_key)
-    if path is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Thumbnail missing from storage")
-    return FileResponse(path, media_type="image/jpeg")
+    return await _serve_object(
+        storage,
+        attachment.thumbnail_key,
+        media_type="image/jpeg",
+        missing_detail="Thumbnail missing from storage",
+    )
 
 
 @router.get("/attachments/{attachment_id}/file")
-async def download_attachment(attachment: OwnedAttachment, storage: Storage) -> FileResponse:
-    path = storage.local_path(attachment.storage_key)
-    if path is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File missing from storage")
-    return FileResponse(
-        path,
+async def download_attachment(attachment: OwnedAttachment, storage: Storage) -> Response:
+    return await _serve_object(
+        storage,
+        attachment.storage_key,
         media_type=attachment.content_type,
         filename=attachment.original_filename or "prescription",
+        missing_detail="File missing from storage",
     )
 
 

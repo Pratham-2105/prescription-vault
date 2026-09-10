@@ -1,0 +1,37 @@
+# Everything the image does not need. Keeps the build fast and, more
+# importantly, keeps secrets and host-specific junk out of the image.
+
+.git
+.github
+.gitignore
+.gitattributes
+
+# Host virtualenv: Windows paths and cp313 wheels built for Windows.
+# Copying this in would shadow the Linux venv and break the image.
+.venv
+venv
+
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Secrets never enter an image. Config arrives as environment variables.
+.env
+.env.*
+
+# Dev database and uploaded files live in volumes, not in the image.
+dev.db
+*.sqlite
+*.sqlite3
+storage/
+
+# The Expo app is a separate deployable.
+client/
+
+*.md
+!README.md
