@@ -1,10 +1,13 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { api } from '@/api';
+import { ApiPatientRepository } from './apiPatientRepository';
 import { ApiPrescriptionRepository } from './apiPrescriptionRepository';
+import type { PatientRepository } from './patientRepository';
 import type { PrescriptionRepository } from './prescriptionRepository';
 
 export type Repositories = {
   prescriptions: PrescriptionRepository;
+  patients: PatientRepository;
 };
 
 const RepositoriesContext = createContext<Repositories | null>(null);
@@ -18,7 +21,11 @@ export function RepositoryProvider({
   value?: Repositories;
 }) {
   const repositories = useMemo<Repositories>(
-    () => value ?? { prescriptions: new ApiPrescriptionRepository(api) },
+    () =>
+      value ?? {
+        prescriptions: new ApiPrescriptionRepository(api),
+        patients: new ApiPatientRepository(api),
+      },
     [value],
   );
 
