@@ -12,14 +12,6 @@
 
 ---
 
-## Screenshots
-
-| Timeline | Visit detail | Capture |
-| --- | --- | --- |
-| ![Timeline](docs/screenshots/timeline.png) | ![Detail](docs/screenshots/detail.png) | ![Capture](docs/screenshots/capture.png) |
-
----
-
 ## Why this exists
 
 Paper prescriptions get lost. Every new doctor asks what you were prescribed six months ago, and the honest answer is usually a shrug or a photo buried in a camera roll of four thousand images.
