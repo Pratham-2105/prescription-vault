@@ -12,6 +12,7 @@ function item(id: string, visitDate: string): PrescriptionListItem {
     reason: null,
     attachmentCount: 0,
     medicationCount: 0,
+    thumbnailAttachmentId: null,
   };
 }
 

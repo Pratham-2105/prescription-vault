@@ -562,6 +562,8 @@ export interface components {
              * @default 0
              */
             medication_count: number;
+            /** Thumbnail Attachment Id */
+            thumbnail_attachment_id?: string | null;
         };
         /** PrescriptionPage */
         PrescriptionPage: {
