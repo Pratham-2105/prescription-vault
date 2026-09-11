@@ -11,6 +11,11 @@ export type PrescriptionListItem = {
   reason: string | null;
   attachmentCount: number;
   medicationCount: number;
+  /**
+   * First page with a preview, or null when the visit has no pages or only
+   * PDFs. The server picks it so the timeline needs no request per row.
+   */
+  thumbnailAttachmentId: string | null;
 };
 
 /** The full record behind one visit — what the detail screen shows. */

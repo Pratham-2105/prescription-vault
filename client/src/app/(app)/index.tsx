@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { usePrescriptions } from '@/data/usePrescriptions';
 import type { PrescriptionListItem } from '@/domain/prescription';
+import { AuthenticatedImage } from '@/features/prescriptions/AuthenticatedImage';
 import { Button, ErrorBanner, colors } from '@/ui';
 
 export default function TimelineScreen() {
@@ -137,8 +138,14 @@ function PrescriptionCard({
   prescription: PrescriptionListItem;
   onPress: () => void;
 }) {
-  const { doctorName, clinicName, reason, attachmentCount, medicationCount } =
-    prescription;
+  const {
+    doctorName,
+    clinicName,
+    reason,
+    attachmentCount,
+    medicationCount,
+    thumbnailAttachmentId,
+  } = prescription;
 
   return (
     <Pressable
@@ -146,18 +153,30 @@ function PrescriptionCard({
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
-      <Text style={styles.doctor}>{doctorName ?? 'Unnamed visit'}</Text>
-      {clinicName ? <Text style={styles.clinic}>{clinicName}</Text> : null}
-      {reason ? (
-        <Text style={styles.reason} numberOfLines={2}>
-          {reason}
-        </Text>
+      {thumbnailAttachmentId ? (
+        // The 400px rendition, not the full page: a timeline of full-size
+        // scans would pull megabytes per screen over mobile data.
+        <AuthenticatedImage
+          attachmentId={thumbnailAttachmentId}
+          variant="thumbnail"
+          style={styles.thumb}
+        />
       ) : null}
-      <Text style={styles.counts}>
-        {countLabel(medicationCount, 'medicine', 'medicines')}
-        {' · '}
-        {countLabel(attachmentCount, 'page', 'pages')}
-      </Text>
+
+      <View style={styles.cardBody}>
+        <Text style={styles.doctor}>{doctorName ?? 'Unnamed visit'}</Text>
+        {clinicName ? <Text style={styles.clinic}>{clinicName}</Text> : null}
+        {reason ? (
+          <Text style={styles.reason} numberOfLines={2}>
+            {reason}
+          </Text>
+        ) : null}
+        <Text style={styles.counts}>
+          {countLabel(medicationCount, 'medicine', 'medicines')}
+          {' · '}
+          {countLabel(attachmentCount, 'page', 'pages')}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -197,6 +216,9 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: StyleSheet.hairlineWidth,
@@ -204,9 +226,20 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 8,
     padding: 14,
-    gap: 4,
   },
   cardPressed: { opacity: 0.7 },
+  // Fixed size, and flexGrow: 0 so the image cannot stretch the row. The
+  // component's own `flex: 1` default would otherwise fight the layout.
+  thumb: {
+    width: 64,
+    height: 64,
+    flexGrow: 0,
+    flexShrink: 0,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: colors.bg,
+  },
+  cardBody: { flex: 1, gap: 4 },
   doctor: { fontSize: 16, fontWeight: '600', color: colors.text },
   clinic: { fontSize: 14, color: colors.muted },
   reason: { fontSize: 14, color: colors.text },

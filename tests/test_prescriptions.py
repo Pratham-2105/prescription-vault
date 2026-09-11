@@ -262,3 +262,39 @@ async def test_patch_only_updates_sent_fields(
     body = resp.json()
     assert body["doctor_name"] == "Dr. Verma"
     assert body["clinic_name"] == "City Clinic"
+
+
+async def test_list_returns_no_thumbnail_id_without_pages(
+    client: AsyncClient, prescription: dict[str, Any], auth_headers: dict[str, str]
+) -> None:
+    """A visit with no pages has nothing for the timeline to preview."""
+    resp = await client.get("/prescriptions", headers=auth_headers)
+
+    row = next(item for item in resp.json()["items"] if item["id"] == prescription["id"])
+    assert row["thumbnail_attachment_id"] is None
+
+
+async def test_list_thumbnail_id_points_at_the_first_page(
+    client: AsyncClient, prescription: dict[str, Any], auth_headers: dict[str, str]
+) -> None:
+    """
+    The timeline shows one preview per visit, and it must be page 1 — not
+    whichever row the database happened to return first. This pins the
+    ordering in the subquery, which nothing else would notice losing.
+    """
+    uploaded = []
+    for _ in range(2):
+        resp = await client.post(
+            f"/prescriptions/{prescription['id']}/attachments",
+            files={"file": JPEG},
+            headers=auth_headers,
+        )
+        uploaded.append(resp.json())
+
+    assert [page["page_number"] for page in uploaded] == [1, 2]
+
+    listing = await client.get("/prescriptions", headers=auth_headers)
+    row = next(item for item in listing.json()["items"] if item["id"] == prescription["id"])
+
+    assert row["attachment_count"] == 2
+    assert row["thumbnail_attachment_id"] == uploaded[0]["id"]

@@ -36,6 +36,10 @@ function toDomain(dto: ApiItem): PrescriptionListItem {
     reason: dto.reason ?? null,
     attachmentCount: dto.attachment_count,
     medicationCount: dto.medication_count,
+    // `?? null` on purpose: the wire type is `string | null | undefined`
+    // because the field is both optional and nullable in the schema. The
+    // domain type has two states, not three.
+    thumbnailAttachmentId: dto.thumbnail_attachment_id ?? null,
   };
 }
 
