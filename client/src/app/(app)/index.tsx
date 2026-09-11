@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -6,16 +6,37 @@ import {
   SectionList,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { usePatients } from '@/data/usePatients';
 import { usePrescriptions } from '@/data/usePrescriptions';
-import type { PrescriptionListItem } from '@/domain/prescription';
+import type { PrescriptionFilters, PrescriptionListItem } from '@/domain/prescription';
 import { AuthenticatedImage } from '@/features/prescriptions/AuthenticatedImage';
-import { Button, ErrorBanner, colors } from '@/ui';
+import { useDebounced } from '@/lib/useDebounced';
+import { Button, ChipGroup, ErrorBanner, colors } from '@/ui';
+
+/** Sentinel id for the "everyone" chip, which is not a real patient. */
+const ALL_PATIENTS = 'all';
 
 export default function TimelineScreen() {
   const router = useRouter();
+
+  const [search, setSearch] = useState('');
+  const [patientId, setPatientId] = useState<string>(ALL_PATIENTS);
+  const debouncedSearch = useDebounced(search);
+
+  const patients = usePatients();
+
+  const filters = useMemo<PrescriptionFilters>(() => {
+    const next: PrescriptionFilters = {};
+    const term = debouncedSearch.trim();
+    if (term) next.q = term;
+    if (patientId !== ALL_PATIENTS) next.patientId = patientId;
+    return next;
+  }, [debouncedSearch, patientId]);
+
   const {
     data,
     isPending,
@@ -26,7 +47,7 @@ export default function TimelineScreen() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = usePrescriptions();
+  } = usePrescriptions(filters);
 
   const handleEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -37,6 +58,12 @@ export default function TimelineScreen() {
   const goToCapture = useCallback(() => {
     router.push('/prescription/new');
   }, [router]);
+
+  // Only worth showing when there is something to choose between.
+  const patientList = patients.data ?? [];
+  const showPatientFilter = patientList.length > 1;
+
+  const isFiltered = filters.q !== undefined || filters.patientId !== undefined;
 
   // First load, nothing cached.
   if (isPending) {
@@ -53,9 +80,7 @@ export default function TimelineScreen() {
       <View style={styles.centered}>
         <ErrorBanner
           message={
-            error instanceof Error
-              ? error.message
-              : 'Could not load your prescriptions.'
+            error instanceof Error ? error.message : 'Could not load your prescriptions.'
           }
         />
         <Button label="Try again" onPress={() => void refetch()} />
@@ -73,6 +98,7 @@ export default function TimelineScreen() {
         sections={sections}
         keyExtractor={(item) => item.id}
         stickySectionHeadersEnabled
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
@@ -82,6 +108,36 @@ export default function TimelineScreen() {
         }
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
+        ListHeaderComponent={
+          <View style={styles.controls}>
+            <TextInput
+              style={styles.search}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search doctor, clinic, reason…"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+              accessibilityLabel="Search prescriptions"
+            />
+            {showPatientFilter ? (
+              <ChipGroup
+                label="Showing"
+                options={[
+                  { id: ALL_PATIENTS, label: 'Everyone' },
+                  ...patientList.map((patient) => ({
+                    id: patient.id,
+                    label: patient.displayName,
+                  })),
+                ]}
+                selectedId={patientId}
+                onSelect={setPatientId}
+              />
+            ) : null}
+          </View>
+        }
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
@@ -96,15 +152,34 @@ export default function TimelineScreen() {
           />
         )}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No prescriptions yet</Text>
-            <Text style={styles.emptyBody}>
-              Add a visit to start building your record.
-            </Text>
-            <View style={styles.emptyAction}>
-              <Button label="Add a visit" onPress={goToCapture} />
+          isFiltered ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>Nothing matches</Text>
+              <Text style={styles.emptyBody}>
+                Try a different search, or clear the filters.
+              </Text>
+              <View style={styles.emptyAction}>
+                <Button
+                  label="Clear filters"
+                  variant="secondary"
+                  onPress={() => {
+                    setSearch('');
+                    setPatientId(ALL_PATIENTS);
+                  }}
+                />
+              </View>
             </View>
-          </View>
+          ) : (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>No prescriptions yet</Text>
+              <Text style={styles.emptyBody}>
+                Add a visit to start building your record.
+              </Text>
+              <View style={styles.emptyAction}>
+                <Button label="Add a visit" onPress={goToCapture} />
+              </View>
+            </View>
+          )
         }
         ListFooterComponent={
           isFetchingNextPage ? (
@@ -154,8 +229,6 @@ function PrescriptionCard({
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
       {thumbnailAttachmentId ? (
-        // The 400px rendition, not the full page: a timeline of full-size
-        // scans would pull megabytes per screen over mobile data.
         <AuthenticatedImage
           attachmentId={thumbnailAttachmentId}
           variant="thumbnail"
@@ -202,6 +275,21 @@ const styles = StyleSheet.create({
     gap: 16,
     backgroundColor: colors.bg,
   },
+  controls: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 12,
+  },
+  search: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: colors.text,
+  },
   sectionHeader: {
     backgroundColor: colors.bg,
     paddingHorizontal: 16,
@@ -228,8 +316,6 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   cardPressed: { opacity: 0.7 },
-  // Fixed size, and flexGrow: 0 so the image cannot stretch the row. The
-  // component's own `flex: 1` default would otherwise fight the layout.
   thumb: {
     width: 64,
     height: 64,
