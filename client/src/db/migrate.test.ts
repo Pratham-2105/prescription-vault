@@ -16,7 +16,7 @@ async function tableNames(driver: SqlDriver): Promise<string[]> {
 
 async function seedVisit(driver: SqlDriver): Promise<void> {
   await driver.run(
-    `INSERT INTO patients (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+    `INSERT INTO patients (id, display_name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
     ['p1', 'Self', '2026-09-11T10:00:00.000Z', '2026-09-11T10:00:00.000Z'],
   );
   await driver.run(
@@ -126,7 +126,7 @@ describe('schema', () => {
 
   it('rejects a timestamp in visit_date', async () => {
     await driver.run(
-      `INSERT INTO patients (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO patients (id, display_name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
       ['p1', 'Self', 'now', 'now'],
     );
 
@@ -163,6 +163,19 @@ describe('schema', () => {
             created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         ['a1', 'v1', 'k1', 'image/jpeg', 'not a number', 1, 'now', 'now'],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('rejects an unknown food_relation', async () => {
+    await seedVisit(driver);
+
+    await expect(
+      driver.run(
+        `INSERT INTO medications
+           (id, prescription_id, name, food_relation, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        ['m1', 'v1', 'Azithral', 'sometimes', 'now', 'now'],
       ),
     ).rejects.toThrow();
   });
