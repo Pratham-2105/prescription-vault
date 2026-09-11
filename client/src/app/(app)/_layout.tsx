@@ -1,24 +1,32 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
+import { CLOUD_ENABLED } from '@/flags';
 import { useSession } from '@/state/session';
 import { colors } from '@/ui';
 
 export default function AppLayout() {
   const { user, isRestoring } = useSession();
 
-  // Cold start: /auth/me is still in flight. Rendering the redirect here
-  // would flash the login screen at a user who is in fact signed in.
-  if (isRestoring) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
+  // With no cloud tier there are no accounts, so there is nothing to gate on:
+  // the records live on this device and the person holding it is the owner.
+  // The guard stays in the file rather than being deleted, because deleting it
+  // is how it went missing once before — private screens rendered and fired
+  // unauthenticated queries, and only a review bot noticed.
+  if (CLOUD_ENABLED) {
+    // Cold start: /auth/me is still in flight. Redirecting here would flash
+    // the login screen at a user who is in fact signed in.
+    if (isRestoring) {
+      return (
+        <View style={styles.centered}>
+          <ActivityIndicator />
+        </View>
+      );
+    }
 
-  // The gate for every screen in this group. Guards live in the route-group
-  // layout, not in screens — parallel to deps.py on the backend.
-  if (!user) return <Redirect href="/login" />;
+    // The gate for every screen in this group. Guards live in the route-group
+    // layout, not in screens — parallel to deps.py on the backend.
+    if (!user) return <Redirect href="/login" />;
+  }
 
   return (
     <Stack
