@@ -123,6 +123,21 @@ export const MIGRATIONS: Migration[] = [
          ON medications(prescription_id)`,
     ],
   },
+  {
+    version: 2,
+    label: 'app preferences',
+    statements: [
+      // A key/value table rather than columns on a settings row: preferences
+      // are sparse, unrelated to each other, and adding one should not need a
+      // schema change. Reading an absent key means "not set", which is the
+      // default for every flag here.
+      `CREATE TABLE preferences (
+        key        TEXT PRIMARY KEY NOT NULL,
+        value      TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    ],
+  },
 ];
 
 /** The version a fresh install ends up at. */
