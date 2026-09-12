@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   RefreshControl,
   SectionList,
@@ -9,8 +10,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
+import { FEEDBACK_EMAIL } from '@/config/app';
 import { usePatients } from '@/data/usePatients';
+import { useCloudPrompt, useWelcomeCard } from '@/data/usePreferences';
 import { usePrescriptions } from '@/data/usePrescriptions';
 import type { PrescriptionFilters, PrescriptionListItem } from '@/domain/prescription';
 import { AuthenticatedImage } from '@/features/prescriptions/AuthenticatedImage';
@@ -28,6 +31,8 @@ export default function TimelineScreen() {
   const debouncedSearch = useDebounced(search);
 
   const patients = usePatients();
+  const welcome = useWelcomeCard();
+  const cloudPrompt = useCloudPrompt();
 
   const filters = useMemo<PrescriptionFilters>(() => {
     const next: PrescriptionFilters = {};
@@ -59,16 +64,48 @@ export default function TimelineScreen() {
     router.push('/prescription/new');
   }, [router]);
 
+  const goToSettings = useCallback(() => {
+    router.push('/settings');
+  }, [router]);
+
+  const handleCloudInterest = useCallback(() => {
+    // Opens a mail client rather than reporting a tap. The app makes no
+    // network calls and collects nothing, which is a claim in the privacy
+    // policy — measuring interest silently would make that claim false.
+    void Linking.openURL(
+      `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent('Cloud backup')}`,
+    ).catch(() => undefined);
+    cloudPrompt.dismiss();
+  }, [cloudPrompt]);
+
   // Only worth showing when there is something to choose between.
   const patientList = patients.data ?? [];
   const showPatientFilter = patientList.length > 1;
 
   const isFiltered = filters.q !== undefined || filters.patientId !== undefined;
 
+  const headerButton = (
+    <Stack.Screen
+      options={{
+        headerRight: () => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="About this app"
+            onPress={goToSettings}
+            hitSlop={12}
+          >
+            <Text style={styles.headerButton}>About</Text>
+          </Pressable>
+        ),
+      }}
+    />
+  );
+
   // First load, nothing cached.
   if (isPending) {
     return (
       <View style={styles.centered}>
+        {headerButton}
         <ActivityIndicator color={colors.accent} />
       </View>
     );
@@ -78,6 +115,7 @@ export default function TimelineScreen() {
   if (isError) {
     return (
       <View style={styles.centered}>
+        {headerButton}
         <ErrorBanner
           message={
             error instanceof Error ? error.message : 'Could not load your prescriptions.'
@@ -92,6 +130,8 @@ export default function TimelineScreen() {
 
   return (
     <View style={styles.screen}>
+      {headerButton}
+
       <SectionList
         style={styles.list}
         contentContainerStyle={styles.listContent}
@@ -110,6 +150,23 @@ export default function TimelineScreen() {
         onEndReachedThreshold={0.4}
         ListHeaderComponent={
           <View style={styles.controls}>
+            {welcome.visible ? (
+              <WelcomeCard
+                onDismiss={() => {
+                  welcome.dismiss();
+                }}
+              />
+            ) : null}
+
+            {cloudPrompt.visible ? (
+              <CloudPromptCard
+                onInterested={handleCloudInterest}
+                onDismiss={() => {
+                  cloudPrompt.dismiss();
+                }}
+              />
+            ) : null}
+
             <TextInput
               style={styles.search}
               value={search}
@@ -206,6 +263,66 @@ export default function TimelineScreen() {
   );
 }
 
+/**
+ * Shown once, on first run.
+ *
+ * Not a tutorial: the empty state already explains how to add a visit, and
+ * onboarding carousels get skipped. What a new user genuinely cannot guess is
+ * what the app does with their data and what it refuses to do with it, so that
+ * is all this says.
+ */
+function WelcomeCard({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <View style={styles.notice}>
+      <Text style={styles.noticeTitle}>Everything stays on this phone</Text>
+      <Text style={styles.noticeBody}>
+        No account, no sign-in, and nothing is uploaded. Your prescriptions work
+        with no internet at all — at a pharmacy counter, or anywhere else.
+      </Text>
+      <Text style={styles.noticeMuted}>
+        This is a record of what a doctor wrote. It does not give medical advice
+        or check your medicines against each other.
+      </Text>
+      <Pressable accessibilityRole="button" onPress={onDismiss} hitSlop={8}>
+        <Text style={styles.noticeAction}>Got it</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/**
+ * Asked once, after enough records exist to make losing the phone hurt.
+ *
+ * Either answer sets the same flag: this is a question asked once, not a nag.
+ * An app that does not pester about anything else should not start here.
+ */
+function CloudPromptCard({
+  onInterested,
+  onDismiss,
+}: {
+  onInterested: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <View style={styles.notice}>
+      <Text style={styles.noticeTitle}>Would you want a backup?</Text>
+      <Text style={styles.noticeBody}>
+        Your records live only on this phone, so losing it loses them. Encrypted
+        cloud backup and family sharing are possible — but only worth building if
+        people actually want them.
+      </Text>
+      <View style={styles.noticeActions}>
+        <Pressable accessibilityRole="button" onPress={onInterested} hitSlop={8}>
+          <Text style={styles.noticeAction}>Yes, I would use that</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={onDismiss} hitSlop={8}>
+          <Text style={styles.noticeDismiss}>No thanks</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function PrescriptionCard({
   prescription,
   onPress,
@@ -275,11 +392,31 @@ const styles = StyleSheet.create({
     gap: 16,
     backgroundColor: colors.bg,
   },
+  headerButton: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.accent,
+    paddingHorizontal: 8,
+  },
   controls: {
     paddingHorizontal: 16,
     paddingTop: 12,
     gap: 12,
   },
+  notice: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    padding: 16,
+    gap: 8,
+  },
+  noticeTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
+  noticeBody: { fontSize: 14, color: colors.text, lineHeight: 20 },
+  noticeMuted: { fontSize: 13, color: colors.muted, lineHeight: 19 },
+  noticeActions: { flexDirection: 'row', gap: 20, marginTop: 2 },
+  noticeAction: { fontSize: 15, fontWeight: '600', color: colors.accent, paddingVertical: 4 },
+  noticeDismiss: { fontSize: 15, color: colors.muted, paddingVertical: 4 },
   search: {
     borderWidth: 1,
     borderColor: colors.border,

@@ -47,6 +47,7 @@ Three rules, held deliberately:
 
 **Everything above works in airplane mode.** Verified on a physical Android device: created a visit with photos, switched to airplane mode, created another, restarted the app, and every record and image was intact — including the PDF export.
 
+**Understand** — an About screen with the privacy policy, version, and a plain statement of what the app will not do; a one-time first-run notice explaining that records never leave the phone
 ---
 
 ## Engineering
@@ -284,7 +285,7 @@ Named deliberately rather than left to be discovered.
 - **No tests for the SQLite repositories.** They are now the most important code in the app, and Vitest runs in a Node environment with no native modules available.
 - **Exported PDFs arrive with a generated filename**, and a PDF attached to a visit is skipped rather than merged into the export.
 - **Rate limiting is in-process and per-IP.** N workers permit N times the configured limit, and on carrier-grade NAT — common across Indian mobile networks — thousands of users share an address.
-
+- **Single device.** No sync, no family sharing. Records live on one phone; losing it loses them. The app asks once whether you would want cloud backup — it gets built if enough people say yes.
 ---
 
 ## Roadmap
