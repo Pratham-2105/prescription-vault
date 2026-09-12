@@ -102,11 +102,14 @@ async function embedPages(
 
     try {
       const source = await readImage(attachment.id);
+      const embedded = source.startsWith('data:') ? source : await toDataUri(source);
+      
       pages.push({
         pageNumber: attachment.pageNumber,
-        dataUri: source.startsWith('data:') ? source : toDataUri(source),
+        dataUri: embedded,
       });
-    } catch {
+    } catch (error) {
+      console.log('PAGE FAILED', attachment.pageNumber, error);
       continue;
     }
   }
@@ -121,6 +124,6 @@ async function embedPages(
  * anything with a thumbnail is a JPEG regardless of what was originally
  * picked.
  */
-function toDataUri(fileUri: string): string {
-  return `data:image/jpeg;base64,${new File(fileUri).base64()}`;
+async function toDataUri(fileUri: string): Promise<string> {
+  return `data:image/jpeg;base64,${await new File(fileUri).base64()}`;
 }

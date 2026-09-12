@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "client",
-    "slug": "client",
+    "name": "Prescription Vault",
+    "slug": "prescription-vault",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -18,7 +18,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.beingpratham.prescriptionvault"
     },
     "web": {
       "output": "static",
@@ -41,6 +42,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "91ddd915-2b39-4217-94b0-9135cc68e786"
+      }
+    },
+    "owner": "beingpratham"
   }
 }
