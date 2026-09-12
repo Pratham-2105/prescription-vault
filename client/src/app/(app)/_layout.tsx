@@ -41,7 +41,8 @@ export default function AppLayout() {
         name="index"
         options={{ title: 'Prescriptions', headerLargeTitle: true }}
       />
-      <Stack.Screen name="prescription/[id]" options={{ title: 'Visit' }} />
+      {/* The [id] segment has its own layout; its screens are titled there. */}
+      <Stack.Screen name="prescription/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="prescription/new" options={{ title: 'New visit' }} />
     </Stack>
   );

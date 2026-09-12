@@ -8,6 +8,7 @@ import type {
   NewPrescription,
   Page,
   Prescription,
+  PrescriptionEdit,
   PrescriptionListItem,
 } from '@/domain/prescription';
 import { deleteAttachmentFiles, processPickedFile } from '@/services/imagePipeline';
@@ -365,6 +366,64 @@ export class SqlitePrescriptionRepository implements PrescriptionRepository {
       isActive: true,
     };
   }
+
+  async update(id: string, input: PrescriptionEdit): Promise<Prescription> {
+    const db = await getDatabase();
+
+    const changed = await db.runAsync(
+      `UPDATE prescriptions
+          SET visit_date = ?, doctor_name = ?, clinic_name = ?,
+              specialty = ?, reason = ?, notes = ?, updated_at = ?
+        WHERE id = ?`,
+      [
+        input.visitDate,
+        emptyToNull(input.doctorName),
+        emptyToNull(input.clinicName),
+        emptyToNull(input.specialty),
+        emptyToNull(input.reason),
+        emptyToNull(input.notes),
+        nowIso(),
+        id,
+      ],
+    );
+
+    // runAsync reports how many rows matched. Zero means the record was
+    // deleted between opening the form and saving it — worth saying plainly
+    // rather than returning silently and letting the caller wonder.
+    if (changed.changes === 0) {
+      throw new Error('That prescription no longer exists.');
+    }
+
+    return this.getById(id);
+  }
+
+  async deleteAttachment(attachmentId: string): Promise<void> {
+    const db = await getDatabase();
+
+    // Read the paths before deleting the row, or they are gone.
+    const row = await db.getFirstAsync<{
+      local_uri: string;
+      thumbnail_uri: string | null;
+    }>(`SELECT local_uri, thumbnail_uri FROM attachments WHERE id = ?`, [attachmentId]);
+
+    if (!row) return;
+
+    await db.runAsync(`DELETE FROM attachments WHERE id = ?`, [attachmentId]);
+
+    // Row first, files second. If the file deletion fails the bytes are
+    // orphaned, which wastes space; if the order were reversed and the row
+    // deletion failed, a record would point at a file that no longer exists,
+    // which shows the user a broken page.
+    deleteAttachmentFiles({
+      localUri: row.local_uri,
+      thumbnailUri: row.thumbnail_uri,
+    });
+  }
+
+  async deleteMedication(medicationId: string): Promise<void> {
+    const db = await getDatabase();
+    await db.runAsync(`DELETE FROM medications WHERE id = ?`, [medicationId]);
+  }
 }
 
 // -------------------------------------------------------------------- filters
@@ -420,7 +479,7 @@ function buildFilters(
   if (filters.q) {
     conditions.push(
       `(${like(`${prefix}doctor_name`)} OR ${like(`${prefix}clinic_name`)}` +
-        ` OR ${like(`${prefix}reason`)} OR ${like(`${prefix}notes`)})`,
+      ` OR ${like(`${prefix}reason`)} OR ${like(`${prefix}notes`)})`,
     );
     const pattern = contains(filters.q);
     params.push(pattern, pattern, pattern, pattern);

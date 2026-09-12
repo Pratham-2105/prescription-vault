@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   ScrollView,
@@ -13,9 +14,13 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMedications, usePrescription } from '@/data/usePrescriptionDetail';
+import {
+  useDeleteAttachment,
+  useDeleteMedication,
+} from '@/data/usePrescriptionMutations';
 import { formatFrequency } from '@/features/prescriptions/formatFrequency';
 import { formatVisitDate } from '@/features/prescriptions/groupByVisitDate';
-import type { Medication } from '@/domain/prescription';
+import type { Attachment, Medication } from '@/domain/prescription';
 import { Button, ErrorBanner, colors } from '@/ui';
 import { AttachmentPage } from '@/features/prescriptions/AttachmentPage';
 
@@ -28,6 +33,9 @@ export default function PrescriptionDetailScreen() {
 
   const prescription = usePrescription(id);
   const medications = useMedications(id);
+  const deleteAttachment = useDeleteAttachment();
+  const deleteMedication = useDeleteMedication();
+
   const [page, setPage] = useState(0);
 
   // pagingEnabled snaps to page boundaries, so offset / width is the index.
@@ -39,6 +47,67 @@ export default function PrescriptionDetailScreen() {
   );
 
   const goBack = useCallback(() => router.back(), [router]);
+
+  const goToEdit = useCallback(() => {
+    router.push({ pathname: '/prescription/[id]/edit', params: { id } });
+  }, [id, router]);
+
+  /**
+   * Deleting a page destroys the stored image as well as the row, and there is
+   * no undo, so it asks first. Alert rather than the custom dialog used for
+   * edits: this is one irreversible yes-or-no, not a list of changes to read.
+   */
+  const confirmDeletePage = useCallback(
+    (attachment: Attachment) => {
+      Alert.alert(
+        `Delete page ${String(attachment.pageNumber)}?`,
+        'The scan will be removed from this device. This cannot be undone.',
+        [
+          { text: 'Keep', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              deleteAttachment.mutate(
+                { attachmentId: attachment.id, prescriptionId: id },
+                {
+                  // The swiper index may now point past the end of a shorter
+                  // list, which renders as a blank page until the user scrolls.
+                  onSuccess: () => {
+                    setPage(0);
+                  },
+                },
+              );
+            },
+          },
+        ],
+      );
+    },
+    [deleteAttachment, id],
+  );
+
+  const confirmDeleteMedicine = useCallback(
+    (medication: Medication) => {
+      Alert.alert(
+        `Remove ${medication.name}?`,
+        'This medicine will no longer appear on this visit.',
+        [
+          { text: 'Keep', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: () => {
+              deleteMedication.mutate({
+                medicationId: medication.id,
+                prescriptionId: id,
+              });
+            },
+          },
+        ],
+      );
+    },
+    [deleteMedication, id],
+  );
 
   // ---- conditional returns start here ----
   if (prescription.isPending) {
@@ -68,9 +137,16 @@ export default function PrescriptionDetailScreen() {
   }
 
   const p = prescription.data;
+  const deleteError =
+    deleteAttachment.error instanceof Error
+      ? deleteAttachment.error.message
+      : deleteMedication.error instanceof Error
+        ? deleteMedication.error.message
+        : null;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <ErrorBanner message={deleteError} />
 
       <View style={styles.header}>
         <Text style={styles.date}>{formatVisitDate(p.visitDate)}</Text>
@@ -79,6 +155,10 @@ export default function PrescriptionDetailScreen() {
         {p.specialty ? <Text style={styles.muted}>{p.specialty}</Text> : null}
         {p.reason ? <LabelledText label="Reason for visit" value={p.reason} /> : null}
         {p.notes ? <LabelledText label="Notes" value={p.notes} /> : null}
+
+        <View style={styles.headerAction}>
+          <Button label="Edit visit" variant="secondary" onPress={goToEdit} />
+        </View>
       </View>
 
       <Text style={styles.sectionTitle}>Pages</Text>
@@ -99,9 +179,21 @@ export default function PrescriptionDetailScreen() {
               </View>
             )}
           />
-          <Text style={styles.pageCount}>
-            Page {page + 1} of {p.attachments.length}
-          </Text>
+          <View style={styles.pagerFooter}>
+            <Text style={styles.pageCount}>
+              Page {page + 1} of {p.attachments.length}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                const current = p.attachments[page];
+                if (current) confirmDeletePage(current);
+              }}
+              disabled={deleteAttachment.isPending}
+            >
+              <Text style={styles.remove}>Delete this page</Text>
+            </Pressable>
+          </View>
         </View>
       )}
 
@@ -113,7 +205,16 @@ export default function PrescriptionDetailScreen() {
       ) : medications.data.length === 0 ? (
         <Text style={styles.empty}>No medicines recorded for this visit.</Text>
       ) : (
-        medications.data.map((m) => <MedicationRow key={m.id} medication={m} />)
+        medications.data.map((m) => (
+          <MedicationRow
+            key={m.id}
+            medication={m}
+            onRemove={() => {
+              confirmDeleteMedicine(m);
+            }}
+            disabled={deleteMedication.isPending}
+          />
+        ))
       )}
 
       <Text style={styles.disclaimer}>
@@ -123,26 +224,34 @@ export default function PrescriptionDetailScreen() {
   );
 }
 
-function MedicationRow({ medication }: { medication: Medication }) {
+function MedicationRow({
+  medication,
+  onRemove,
+  disabled,
+}: {
+  medication: Medication;
+  onRemove: () => void;
+  disabled: boolean;
+}) {
   const { name, strength, form, frequencyCode, foodRelation, durationDays } = medication;
   const schedule = formatFrequency(frequencyCode);
-
-  const detail = [
-    schedule,
-    foodRelation,
-    durationDays ? `${durationDays} days` : null,
-  ]
+  const detail = [schedule, foodRelation, durationDays ? `${durationDays} days` : null]
     .filter(Boolean)
     .join(' · ');
 
   return (
     <View style={styles.medication}>
-      <Text style={styles.medicationName}>
-        {name}
-        {strength ? ` ${strength}` : ''}
-        {form ? ` (${form})` : ''}
-      </Text>
-      {detail ? <Text style={styles.muted}>{detail}</Text> : null}
+      <View style={styles.medicationBody}>
+        <Text style={styles.medicationName}>
+          {name}
+          {strength ? ` ${strength}` : ''}
+          {form ? ` (${form})` : ''}
+        </Text>
+        {detail ? <Text style={styles.muted}>{detail}</Text> : null}
+      </View>
+      <Pressable accessibilityRole="button" onPress={onRemove} disabled={disabled}>
+        <Text style={styles.remove}>Remove</Text>
+      </Pressable>
     </View>
   );
 }
@@ -178,6 +287,7 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 8,
   },
+  headerAction: { marginTop: 14 },
   date: {
     fontSize: 12,
     fontWeight: '600',
@@ -202,17 +312,28 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
-  pageCount: { fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: 6 },
+  pagerFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  pageCount: { fontSize: 13, color: colors.muted },
+  remove: { fontSize: 14, fontWeight: '600', color: colors.danger },
   empty: { fontSize: 14, color: colors.muted, paddingVertical: 8 },
   medication: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     marginBottom: 8,
-    gap: 2,
   },
+  medicationBody: { flex: 1, gap: 2 },
   medicationName: { fontSize: 16, fontWeight: '600', color: colors.text },
   disclaimer: {
     fontSize: 12,

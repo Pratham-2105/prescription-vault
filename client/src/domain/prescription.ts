@@ -13,7 +13,7 @@ export type PrescriptionListItem = {
   medicationCount: number;
   /**
    * First page with a preview, or null when the visit has no pages or only
-   * PDFs. The server picks it so the timeline needs no request per row.
+   * PDFs. Chosen by the data layer so the timeline needs no request per row.
    */
   thumbnailAttachmentId: string | null;
 };
@@ -31,13 +31,13 @@ export type Prescription = {
   attachments: Attachment[];
 };
 
-/** One scanned page. storage_key is deliberately absent — decision §5.8. */
+/** One scanned page. The storage key is deliberately absent. */
 export type Attachment = {
   id: string;
   pageNumber: number;
   contentType: string;
   sizeBytes: number;
-  /** False for PDFs — requesting a thumbnail for those 404s. */
+  /** False for PDFs — requesting a thumbnail for those fails. */
   hasThumbnail: boolean;
 };
 
@@ -51,7 +51,7 @@ export type PrescriptionFilters = {
   q?: string;
 };
 
-/** Matches your PrescriptionPage envelope, generic so other lists can reuse it. */
+/** A page of results, generic so other lists can reuse it. */
 export type Page<T> = {
   items: T[];
   total: number;
@@ -89,7 +89,27 @@ export type NewPrescription = {
   notes?: string | null;
 };
 
-/** One medicine as typed into the capture form. Only the name is required. */
+/**
+ * The editable fields of an existing visit.
+ *
+ * Every field is required, unlike NewPrescription. An edit form always holds a
+ * complete picture of the record, and optional fields would make "clear this
+ * field" indistinguishable from "leave it alone".
+ *
+ * patientId is absent on purpose: moving a visit to a different person is a
+ * different operation from correcting its details, and mixing them would make
+ * a mis-tap in the patient chips silently reassign a medical record.
+ */
+export type PrescriptionEdit = {
+  visitDate: IsoDate;
+  doctorName: string | null;
+  clinicName: string | null;
+  specialty: string | null;
+  reason: string | null;
+  notes: string | null;
+};
+
+/** One medicine as typed into a form. Only the name is required. */
 export type NewMedication = {
   name: string;
   strength?: string | null;
