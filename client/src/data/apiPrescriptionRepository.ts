@@ -8,6 +8,7 @@ import type {
   NewPrescription,
   Page,
   Prescription,
+  PrescriptionEdit,
   PrescriptionListItem,
 } from '@/domain/prescription';
 import type {
@@ -21,6 +22,7 @@ type ApiPage = components['schemas']['PrescriptionPage'];
 type ApiItem = components['schemas']['PrescriptionListItem'];
 type ApiPrescription = components['schemas']['PrescriptionRead'];
 type ApiPrescriptionCreate = components['schemas']['PrescriptionCreate'];
+type ApiPrescriptionUpdate = components['schemas']['PrescriptionUpdate'];
 type ApiAttachment = components['schemas']['AttachmentRead'];
 type ApiMedication = components['schemas']['MedicationRead'];
 type ApiMedicationCreate = components['schemas']['MedicationCreate'];
@@ -139,10 +141,9 @@ export class ApiPrescriptionRepository implements PrescriptionRepository {
   }
 
   async getById(id: string, signal?: AbortSignal): Promise<Prescription> {
-    const dto = await this.api.get<ApiPrescription>(
-      `/api/v1/prescriptions/${id}`,
-      { signal },
-    );
+    const dto = await this.api.get<ApiPrescription>(`/api/v1/prescriptions/${id}`, {
+      signal,
+    });
     return prescriptionToDomain(dto);
   }
 
@@ -163,19 +164,15 @@ export class ApiPrescriptionRepository implements PrescriptionRepository {
     signal?: AbortSignal,
   ): Promise<string> {
     const suffix = variant === 'thumbnail' ? 'thumbnail' : 'file';
-    const response = await this.api.raw(
-      `/api/v1/attachments/${attachmentId}/${suffix}`,
-      { signal },
-    );
+    const response = await this.api.raw(`/api/v1/attachments/${attachmentId}/${suffix}`, {
+      signal,
+    });
     return blobToDataUrl(await response.blob());
   }
 
   // ------------------------------------------------------------------ writes
 
-  async create(
-    input: NewPrescription,
-    signal?: AbortSignal,
-  ): Promise<Prescription> {
+  async create(input: NewPrescription, signal?: AbortSignal): Promise<Prescription> {
     const body: ApiPrescriptionCreate = {
       patient_id: input.patientId,
       visit_date: input.visitDate,
@@ -187,6 +184,30 @@ export class ApiPrescriptionRepository implements PrescriptionRepository {
     };
 
     const dto = await this.api.post<ApiPrescription>('/api/v1/prescriptions', {
+      body,
+      signal,
+    });
+    return prescriptionToDomain(dto);
+  }
+
+  async update(
+    id: string,
+    input: PrescriptionEdit,
+    signal?: AbortSignal,
+  ): Promise<Prescription> {
+    // Every field is sent, including the nulls. The endpoint uses
+    // exclude_unset, so an omitted key is left untouched — clearing a doctor
+    // name therefore requires sending null explicitly rather than dropping it.
+    const body: ApiPrescriptionUpdate = {
+      visit_date: input.visitDate,
+      doctor_name: emptyToNull(input.doctorName),
+      clinic_name: emptyToNull(input.clinicName),
+      specialty: emptyToNull(input.specialty),
+      reason: emptyToNull(input.reason),
+      notes: emptyToNull(input.notes),
+    };
+
+    const dto = await this.api.patch<ApiPrescription>(`/api/v1/prescriptions/${id}`, {
       body,
       signal,
     });
@@ -228,5 +249,15 @@ export class ApiPrescriptionRepository implements PrescriptionRepository {
       { body, signal },
     );
     return medicationToDomain(dto);
+  }
+
+  async deleteAttachment(attachmentId: string, signal?: AbortSignal): Promise<void> {
+    // The server owns the stored bytes and removes them with the row. The
+    // SQLite implementation has to delete the files itself.
+    await this.api.delete<void>(`/api/v1/attachments/${attachmentId}`, { signal });
+  }
+
+  async deleteMedication(medicationId: string, signal?: AbortSignal): Promise<void> {
+    await this.api.delete<void>(`/api/v1/medications/${medicationId}`, { signal });
   }
 }
