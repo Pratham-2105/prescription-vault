@@ -13,11 +13,13 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { usePatients } from '@/data/usePatients';
 import { useMedications, usePrescription } from '@/data/usePrescriptionDetail';
 import {
   useDeleteAttachment,
   useDeleteMedication,
 } from '@/data/usePrescriptionMutations';
+import { useShareVisit } from '@/data/useShareVisit';
 import { formatFrequency } from '@/features/prescriptions/formatFrequency';
 import { formatVisitDate } from '@/features/prescriptions/groupByVisitDate';
 import type { Attachment, Medication } from '@/domain/prescription';
@@ -33,8 +35,10 @@ export default function PrescriptionDetailScreen() {
 
   const prescription = usePrescription(id);
   const medications = useMedications(id);
+  const patients = usePatients();
   const deleteAttachment = useDeleteAttachment();
   const deleteMedication = useDeleteMedication();
+  const { share, isSharing, error: shareError } = useShareVisit();
 
   const [page, setPage] = useState(0);
 
@@ -51,6 +55,20 @@ export default function PrescriptionDetailScreen() {
   const goToEdit = useCallback(() => {
     router.push({ pathname: '/prescription/[id]/edit', params: { id } });
   }, [id, router]);
+
+  const loaded = prescription.data;
+  const loadedMedications = medications.data;
+
+  const handleShare = useCallback(() => {
+    if (!loaded) return;
+
+    // The patient list is already cached for the timeline's filter, so this is
+    // a lookup rather than a fetch. Falling back to a generic label keeps the
+    // export working even if the list has not resolved yet.
+    const patient = patients.data?.find((candidate) => candidate.id === loaded.patientId);
+
+    share(loaded, patient?.displayName ?? 'this patient', loadedMedications ?? []);
+  }, [loaded, loadedMedications, patients.data, share]);
 
   /**
    * Deleting a page destroys the stored image as well as the row, and there is
@@ -147,6 +165,7 @@ export default function PrescriptionDetailScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <ErrorBanner message={deleteError} />
+      <ErrorBanner message={shareError} />
 
       <View style={styles.header}>
         <Text style={styles.date}>{formatVisitDate(p.visitDate)}</Text>
@@ -156,8 +175,18 @@ export default function PrescriptionDetailScreen() {
         {p.reason ? <LabelledText label="Reason for visit" value={p.reason} /> : null}
         {p.notes ? <LabelledText label="Notes" value={p.notes} /> : null}
 
-        <View style={styles.headerAction}>
-          <Button label="Edit visit" variant="secondary" onPress={goToEdit} />
+        <View style={styles.headerActions}>
+          <View style={styles.headerAction}>
+            <Button label="Edit visit" variant="secondary" onPress={goToEdit} />
+          </View>
+          <View style={styles.headerAction}>
+            <Button
+              label="Share as PDF"
+              variant="secondary"
+              onPress={handleShare}
+              busy={isSharing}
+            />
+          </View>
         </View>
       </View>
 
@@ -287,7 +316,8 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 8,
   },
-  headerAction: { marginTop: 14 },
+  headerActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  headerAction: { flex: 1 },
   date: {
     fontSize: 12,
     fontWeight: '600',
